@@ -88,19 +88,15 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
 
     if (isSupabaseConfigured) {
       if (!inputVal) {
-        setMemberError('請輸入電子信箱或使用者 ID！');
+        setMemberError('請輸入電子信箱或信箱前綴！');
         return;
       }
 
       const isEmail = inputVal.includes('@');
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      const isUuid = uuidRegex.test(inputVal);
       
       try {
         let query = supabase.from('profiles').select('*');
-        if (isUuid) {
-          query = query.eq('id', inputVal);
-        } else if (isEmail) {
+        if (isEmail) {
           query = query.eq('email', inputVal.toLowerCase());
         } else {
           // 以信箱 @ 前綴搜尋 (例如: input 為 bob，則搜尋 bob@%)
@@ -112,7 +108,7 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
         if (error) throw error;
 
         if (!profiles || profiles.length === 0) {
-          alert('找不到該使用者！受邀人必須先註冊 ShareSettle 帳號，請確認 Email 或前綴 ID 是否正確。');
+          alert('找不到該使用者！受邀人必須先註冊 ShareSettle 帳號，請確認信箱或前綴是否正確。');
           setMemberError('找不到該使用者！受邀人必須先註冊帳號。');
           return;
         }
@@ -1020,12 +1016,12 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
 
                   <div className="form-group" style={{ marginBottom: '16px' }}>
                     <label className="form-label" style={{ fontSize: '12px' }}>
-                      {isSupabaseConfigured ? "受邀人的電子信箱或使用者 ID *" : "電子信箱 *"}
+                      {isSupabaseConfigured ? "受邀人的電子信箱或信箱前綴 *" : "電子信箱 *"}
                     </label>
                     <input
                       type={isSupabaseConfigured ? "text" : "email"}
                       className="input-field"
-                      placeholder={isSupabaseConfigured ? "例如: bob@test.com 或 user-uuid" : "example@email.com"}
+                      placeholder={isSupabaseConfigured ? "例如: bob@test.com 或 bob" : "example@email.com"}
                       value={newMemberEmail}
                       onChange={(e) => setNewMemberEmail(e.target.value)}
                       style={{ padding: '8px 12px', fontSize: '14px' }}
