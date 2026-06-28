@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ArrowLeft, Plus, Users, DollarSign, Share2, Settings, Trash2, Edit2, CheckCircle2, ChevronDown, ChevronUp, Copy } from 'lucide-react';
 import type { SplitEvent, Member, Expense, UserSession, PaymentMethod } from '../types';
 import { calculateSettlements, convertCurrency, serializeEvent, round } from '../utils';
+import { isSupabaseConfigured } from '../supabase';
 import { ExpenseModal } from './ExpenseModal';
 
 interface EventDashboardProps {
@@ -48,10 +49,9 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
 
   // 複製分享代碼與 URL
   const handleShare = () => {
-    const serialized = serializeEvent(event);
-    if (!serialized) return;
-
-    const shareUrl = `${window.location.origin}${window.location.pathname}#/import/${serialized}`;
+    const shareUrl = isSupabaseConfigured
+      ? `${window.location.origin}${window.location.pathname}#/join/${event.id}`
+      : `${window.location.origin}${window.location.pathname}#/import/${serializeEvent(event)}`;
     
     // 試圖複製到剪貼簿
     navigator.clipboard.writeText(shareUrl)
@@ -62,7 +62,8 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
       })
       .catch(() => {
         // 退回複製代碼
-        navigator.clipboard.writeText(serialized);
+        const fallbackText = isSupabaseConfigured ? event.id : serializeEvent(event) || '';
+        navigator.clipboard.writeText(fallbackText);
         setToastMsg('分享代碼已複製到剪貼簿！');
         setShowToast(true);
         setTimeout(() => setShowToast(false), 3000);
@@ -71,10 +72,9 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
 
   // 複製單純的分享代碼
   const handleCopyCode = () => {
-    const serialized = serializeEvent(event);
-    if (!serialized) return;
-    navigator.clipboard.writeText(serialized);
-    setToastMsg('活動代碼已複製！');
+    const codeText = isSupabaseConfigured ? event.id : serializeEvent(event) || '';
+    navigator.clipboard.writeText(codeText);
+    setToastMsg(isSupabaseConfigured ? '雲端活動 ID 已複製！' : '活動代碼已複製！');
     setShowToast(true);
     setTimeout(() => setShowToast(false), 3000);
   };

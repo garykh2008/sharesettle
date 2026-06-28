@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Users, DollarSign, Calendar, LogOut, Import, CreditCard } from 'lucide-react';
 import type { SplitEvent, UserSession, PaymentMethod } from '../types';
+import { isSupabaseConfigured } from '../supabase';
 
 interface EventSelectorProps {
   events: SplitEvent[];
   onCreateEvent: (title: string, currency: 'USD' | 'TWD', rate: number, desc?: string) => void;
   onSelectEvent: (eventId: string) => void;
-  onImportEvent: (eventString: string) => boolean;
+  onImportEvent: (eventString: string) => Promise<boolean>;
   currentUser: UserSession;
   onLogout: () => void;
   onSaveUserPaymentMethods: (methods: PaymentMethod[]) => void;
@@ -48,23 +49,23 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
     setShowCreateForm(false);
   };
 
-  const handleImport = (e: React.FormEvent) => {
+  const handleImport = async (e: React.FormEvent) => {
     e.preventDefault();
     setImportError('');
     setImportSuccess(false);
 
     if (!importString.trim()) {
-      setImportError('請貼上分享代碼！');
+      setImportError(isSupabaseConfigured ? '請貼上分享代碼或活動 ID！' : '請貼上分享代碼！');
       return;
     }
 
-    const success = onImportEvent(importString.trim());
+    const success = await onImportEvent(importString.trim());
     if (success) {
       setImportSuccess(true);
       setImportString('');
       setTimeout(() => setImportSuccess(false), 3000);
     } else {
-      setImportError('無效的分享代碼，請確認格式是否正確。');
+      setImportError(isSupabaseConfigured ? '無法載入活動，請確認 ID、網址或分享代碼是否正確。' : '無效的分享代碼，請確認格式是否正確。');
     }
   };
 
@@ -257,7 +258,7 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
               <input
                 type="text"
                 className="input-field"
-                placeholder="貼上活動分享代碼..."
+                placeholder={isSupabaseConfigured ? "貼上活動 ID 或分享網址..." : "貼上活動分享代碼..."}
                 value={importString}
                 onChange={(e) => setImportString(e.target.value)}
                 style={{ flex: 1, padding: '8px 12px', fontSize: '14px' }}
@@ -299,9 +300,16 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
                         </span>
                       )}
                     </h3>
-                    <span className={`badge ${evt.defaultCurrency === 'USD' ? 'badge-indigo' : 'badge-emerald'}`}>
-                      {evt.defaultCurrency}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      {isSupabaseConfigured && (
+                        <span className="badge" style={{ background: 'rgba(99,102,241,0.1)', color: 'var(--color-primary-light)', border: '1px solid rgba(99,102,241,0.15)', textTransform: 'none', fontSize: '9px', padding: '1px 5px' }}>
+                          ☁️ 雲端
+                        </span>
+                      )}
+                      <span className={`badge ${evt.defaultCurrency === 'USD' ? 'badge-indigo' : 'badge-emerald'}`}>
+                        {evt.defaultCurrency}
+                      </span>
+                    </div>
                   </div>
                   {evt.description && (
                     <p style={{ color: 'var(--text-secondary)', fontSize: '13px', lineClamp: 2, WebkitLineClamp: 2, display: '-webkit-box', WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
