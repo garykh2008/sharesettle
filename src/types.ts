@@ -9,6 +9,7 @@ export interface PaymentMethod {
   email: string;
   paymentMethods?: PaymentMethod[];
   status?: 'active' | 'pending';
+  isTemporary?: boolean;
 }
 export type SplitType = 'equal' | 'selected_equal' | 'custom' | 'itemized';
 

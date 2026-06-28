@@ -84,58 +84,86 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
     e.preventDefault();
     setMemberError('');
 
+    const nameVal = newMemberName.trim();
     const inputVal = newMemberEmail.trim();
 
+    if (!nameVal) {
+      setMemberError('請輸入成員姓名/暱稱！');
+      return;
+    }
+
     if (isSupabaseConfigured) {
-      if (!inputVal) {
-        setMemberError('請輸入電子信箱或信箱前綴！');
-        return;
-      }
+      if (inputVal) {
+        // A. 邀請已註冊用戶
+        const isEmail = inputVal.includes('@');
+        
+        try {
+          let query = supabase.from('profiles').select('*');
+          if (isEmail) {
+            query = query.eq('email', inputVal.toLowerCase());
+          } else {
+            // 以信箱 @ 前綴搜尋 (例如: input 為 bob，則搜尋 bob@%)
+            query = query.like('email', `${inputVal.toLowerCase()}@%`);
+          }
 
-      const isEmail = inputVal.includes('@');
-      
-      try {
-        let query = supabase.from('profiles').select('*');
-        if (isEmail) {
-          query = query.eq('email', inputVal.toLowerCase());
-        } else {
-          // 以信箱 @ 前綴搜尋 (例如: input 為 bob，則搜尋 bob@%)
-          query = query.like('email', `${inputVal.toLowerCase()}@%`);
+          const { data: profiles, error } = await query.limit(2);
+
+          if (error) throw error;
+
+          if (!profiles || profiles.length === 0) {
+            alert('找不到該使用者！受邀人必須先註冊 ShareSettle 帳號，請確認信箱或前綴是否正確。');
+            setMemberError('找不到該使用者！受邀人必須先註冊帳號。');
+            return;
+          }
+
+          if (profiles.length > 1) {
+            alert('搜尋到多個符合該前綴的信箱，請輸入完整的 Email 進行邀請！');
+            setMemberError('符合前綴的帳號不唯一，請輸入完整 Email。');
+            return;
+          }
+
+          const profile = profiles[0];
+
+          // 檢查是否重複
+          const exists = event.members.some(
+            (m) => m.email.toLowerCase() === profile.email.toLowerCase()
+          );
+          if (exists) {
+            setMemberError('該成員已在成員清單中！');
+            return;
+          }
+
+          const newMember: Member = {
+            id: profile.id,
+            name: nameVal, // 使用建立者填寫的暱稱（如「小明」），利於活動辨識
+            email: profile.email,
+            paymentMethods: profile.payment_methods || [],
+            status: 'pending', // 標註為待接受邀請
+            isTemporary: false
+          };
+
+          onUpdateEvent({
+            ...event,
+            members: [...event.members, newMember]
+          });
+
+          alert(`已成功向 ${profile.name} 發送邀請！待對方於首頁「接受」後即會加入活動。`);
+          setNewMemberName('');
+          setNewMemberEmail('');
+          setShowAddMember(false);
+        } catch (err: any) {
+          console.error(err);
+          setMemberError(err.message || '查詢雲端使用者發生錯誤。');
         }
-
-        const { data: profiles, error } = await query.limit(2);
-
-        if (error) throw error;
-
-        if (!profiles || profiles.length === 0) {
-          alert('找不到該使用者！受邀人必須先註冊 ShareSettle 帳號，請確認信箱或前綴是否正確。');
-          setMemberError('找不到該使用者！受邀人必須先註冊帳號。');
-          return;
-        }
-
-        if (profiles.length > 1) {
-          alert('搜尋到多個符合該前綴的信箱，請輸入完整的 Email 進行邀請！');
-          setMemberError('符合前綴的帳號不唯一，請輸入完整 Email。');
-          return;
-        }
-
-        const profile = profiles[0];
-
-        // 檢查是否重複
-        const exists = event.members.some(
-          (m) => m.email.toLowerCase() === profile.email.toLowerCase()
-        );
-        if (exists) {
-          setMemberError('該成員已在成員清單中！');
-          return;
-        }
-
+      } else {
+        // B. 建立臨時成員 (無信箱，isTemporary = true)
         const newMember: Member = {
-          id: profile.id,
-          name: profile.name,
-          email: profile.email,
-          paymentMethods: profile.payment_methods || [],
-          status: 'pending' // 標註為待接受邀請
+          id: 'temp_' + Math.random().toString(36).substring(2, 9),
+          name: nameVal,
+          email: '',
+          paymentMethods: [],
+          status: 'active', // 臨時成員直接處於啟用狀態，可以直接記帳
+          isTemporary: true
         };
 
         onUpdateEvent({
@@ -143,18 +171,14 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
           members: [...event.members, newMember]
         });
 
-        alert(`已成功向 ${profile.name} 發送邀請！待對方於首頁「接受」後即會加入活動。`);
         setNewMemberName('');
         setNewMemberEmail('');
         setShowAddMember(false);
-      } catch (err: any) {
-        console.error(err);
-        setMemberError(err.message || '查詢雲端使用者發生錯誤。');
       }
     } else {
-      // 離線/Mock 模式
-      if (!newMemberName.trim() || !inputVal) {
-        setMemberError('請填寫完整資訊！');
+      // 離線/Mock 模式 (信箱必填以區分身分)
+      if (!inputVal) {
+        setMemberError('離線模式下信箱為必填欄位！');
         return;
       }
 
@@ -174,7 +198,7 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
 
       const newMember: Member = {
         id: Math.random().toString(36).substring(2, 9),
-        name: newMemberName.trim(),
+        name: nameVal,
         email: inputVal.toLowerCase(),
         paymentMethods: [],
         status: 'active'
@@ -188,6 +212,78 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
       setNewMemberName('');
       setNewMemberEmail('');
       setShowAddMember(false);
+    }
+  };
+
+  // 連結臨時成員到已註冊的雲端帳號
+  const handleLinkAccount = async (memberId: string, currentName: string) => {
+    const inputVal = window.prompt(`請輸入欲與「${currentName}」連結的成員電子信箱或信箱前綴：`);
+    if (!inputVal || !inputVal.trim()) return;
+
+    const searchVal = inputVal.trim();
+    const isEmail = searchVal.includes('@');
+    
+    try {
+      let query = supabase.from('profiles').select('*');
+      if (isEmail) {
+        query = query.eq('email', searchVal.toLowerCase());
+      } else {
+        // 以信箱 @ 前綴搜尋 (例如: input 為 bob，則搜尋 bob@%)
+        query = query.like('email', `${searchVal.toLowerCase()}@%`);
+      }
+
+      const { data: profiles, error } = await query.limit(2);
+      if (error) throw error;
+
+      if (!profiles || profiles.length === 0) {
+        alert('找不到該使用者！受邀人必須先註冊 ShareSettle 帳號，請確認信箱或前綴是否正確。');
+        return;
+      }
+
+      if (profiles.length > 1) {
+        alert('搜尋到多個符合該前綴的信箱，請輸入完整的 Email 進行邀請！');
+        return;
+      }
+
+      const profile = profiles[0];
+
+      // 檢查該帳號是否已經是活動成員
+      const isAlreadyMember = event.members.some(
+        (m) => m.email.toLowerCase() === profile.email.toLowerCase() && m.id !== memberId
+      );
+      if (isAlreadyMember) {
+        alert('該帳號已在此活動的成員清單中，無法重複連結！');
+        return;
+      }
+
+      if (!window.confirm(`確定要將臨時成員「${currentName}」連結至已註冊帳號「${profile.name} (${profile.email})」嗎？\n連結後會向對方發送活動邀請，對方接受後即可共同管理。`)) {
+        return;
+      }
+
+      // 更新成員名單：將臨時欄位填上信箱與將 status 設為 pending
+      const updatedMembers = event.members.map((m) => {
+        if (m.id === memberId) {
+          return {
+            ...m,
+            name: currentName, // 保持活動中已使用的名字，便於對帳
+            email: profile.email,
+            paymentMethods: profile.payment_methods || [],
+            status: 'pending' as const, // 設定為待接受狀態
+            isTemporary: false
+          };
+        }
+        return m;
+      });
+
+      onUpdateEvent({
+        ...event,
+        members: updatedMembers
+      });
+
+      alert(`已成功連結！已向 ${profile.name} 發送邀請，待對方在首頁點選「接受」即會同步。`);
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || '連結帳號時發生錯誤。');
     }
   };
 
@@ -999,33 +1095,31 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                 )}
 
                 <form onSubmit={handleAddMember}>
-                  {!isSupabaseConfigured ? (
-                    <div className="form-group">
-                      <label className="form-label" style={{ fontSize: '12px' }}>成員姓名/暱稱 *</label>
-                      <input
-                        type="text"
-                        className="input-field"
-                        placeholder="如：小華、Bob"
-                        value={newMemberName}
-                        onChange={(e) => setNewMemberName(e.target.value)}
-                        style={{ padding: '8px 12px', fontSize: '14px' }}
-                        required
-                      />
-                    </div>
-                  ) : null}
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontSize: '12px' }}>成員姓名/暱稱 *</label>
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="如：小華、Bob"
+                      value={newMemberName}
+                      onChange={(e) => setNewMemberName(e.target.value)}
+                      style={{ padding: '8px 12px', fontSize: '14px' }}
+                      required
+                    />
+                  </div>
 
                   <div className="form-group" style={{ marginBottom: '16px' }}>
                     <label className="form-label" style={{ fontSize: '12px' }}>
-                      {isSupabaseConfigured ? "受邀人的電子信箱或信箱前綴 *" : "電子信箱 *"}
+                      {isSupabaseConfigured ? "受邀人的電子信箱或信箱前綴 (選填)" : "電子信箱 *"}
                     </label>
                     <input
                       type={isSupabaseConfigured ? "text" : "email"}
                       className="input-field"
-                      placeholder={isSupabaseConfigured ? "例如: bob@test.com 或 bob" : "example@email.com"}
+                      placeholder={isSupabaseConfigured ? "例如: bob@test.com 或 bob (留空則為臨時成員)" : "example@email.com"}
                       value={newMemberEmail}
                       onChange={(e) => setNewMemberEmail(e.target.value)}
                       style={{ padding: '8px 12px', fontSize: '14px' }}
-                      required
+                      required={!isSupabaseConfigured}
                     />
                   </div>
 
@@ -1034,7 +1128,7 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                       取消
                     </button>
                     <button type="submit" className="btn btn-primary" style={{ padding: '6px 16px', fontSize: '13px' }}>
-                      {isSupabaseConfigured ? "發送邀請" : "加入成員"}
+                      {isSupabaseConfigured && newMemberEmail.trim() ? "發送邀請" : "加入成員"}
                     </button>
                   </div>
                 </form>
@@ -1044,7 +1138,7 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
             {/* 成員清單 */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {event.members.map((m) => {
-                const isCurrentUser = m.email.toLowerCase() === currentUser.email.toLowerCase();
+                const isCurrentUser = m.email && m.email.toLowerCase() === currentUser.email.toLowerCase();
                 
                 return (
                   <div
@@ -1073,7 +1167,9 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                           </span>
                         )}
                       </div>
-                      <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>{m.email}</div>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
+                        {m.email ? m.email : '👤 臨時成員 (未連結帳號)'}
+                      </div>
                       
                       {/* 顯示已設定收款方式簡述 */}
                       {m.paymentMethods && m.paymentMethods.length > 0 && (
@@ -1089,16 +1185,28 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                       )}
                     </div>
 
-                    {!isCurrentUser && (!event.settlements || event.settlements.length === 0) && (
-                      <button
-                        className="btn btn-secondary btn-icon"
-                        onClick={() => handleDeleteMember(m.id)}
-                        style={{ width: '32px', height: '32px', border: 'none', background: 'transparent' }}
-                        title="刪除成員"
-                      >
-                        <Trash2 size={14} style={{ color: 'var(--color-danger)' }} />
-                      </button>
-                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {isSupabaseConfigured && (m.isTemporary || !m.email) && (
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => handleLinkAccount(m.id, m.name)}
+                          style={{ padding: '4px 10px', fontSize: '11px', height: '28px', border: '1px solid var(--border-color)' }}
+                        >
+                          🔗 連結帳號
+                        </button>
+                      )}
+
+                      {!isCurrentUser && (!event.settlements || event.settlements.length === 0) && (
+                        <button
+                          className="btn btn-secondary btn-icon"
+                          onClick={() => handleDeleteMember(m.id)}
+                          style={{ width: '32px', height: '32px', border: 'none', background: 'transparent' }}
+                          title="刪除成員"
+                        >
+                          <Trash2 size={14} style={{ color: 'var(--color-danger)' }} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
