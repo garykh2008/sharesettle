@@ -523,7 +523,7 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                               </span>
                             )}
                             {/* 如果交易附有收據憑證 */}
-                            {exp.receiptUrl && (
+                            {(exp.receiptUrl || (exp.receiptUrls && exp.receiptUrls.length > 0)) && (
                               <span title="附有收據憑證" style={{ display: 'inline-flex', alignItems: 'center', fontSize: '13px', cursor: 'pointer' }}>
                                 🧾
                               </span>
@@ -601,29 +601,37 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                           </div>
 
                           {/* 收據/憑證預覽 */}
-                          {exp.receiptUrl && (
+                          {((exp.receiptUrls || []).filter(Boolean).length > 0 || exp.receiptUrl) && (
                             <div style={{ marginTop: '14px', padding: '10px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                              <div style={{ color: 'var(--text-secondary)', marginBottom: '6px', fontWeight: '500' }}>收據/發票憑證：</div>
-                              <div 
-                                onClick={() => setPreviewReceiptUrl(exp.receiptUrl!)}
-                                style={{ 
-                                  position: 'relative', 
-                                  display: 'inline-block', 
-                                  cursor: 'pointer',
-                                  borderRadius: '6px',
-                                  overflow: 'hidden',
-                                  border: '1px solid rgba(255,255,255,0.1)',
-                                  lineHeight: 0
-                                }}
-                              >
-                                <img 
-                                  src={exp.receiptUrl} 
-                                  alt="收據憑證" 
-                                  style={{ maxHeight: '120px', maxWidth: '100%', objectFit: 'contain' }} 
-                                />
-                                <div style={{ position: 'absolute', bottom: '6px', right: '6px', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px', fontSize: '10px', color: 'white', lineHeight: 'normal' }}>
-                                  🔍 點擊放大
-                                </div>
+                              <div style={{ color: 'var(--text-secondary)', marginBottom: '8px', fontWeight: '500' }}>收據/發票憑證：</div>
+                              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                {((exp.receiptUrls || []).filter(Boolean).length > 0 
+                                  ? (exp.receiptUrls || []).filter(Boolean) 
+                                  : [exp.receiptUrl!]
+                                ).map((url, idx) => (
+                                  <div 
+                                    key={idx}
+                                    onClick={() => setPreviewReceiptUrl(url)}
+                                    style={{ 
+                                      position: 'relative', 
+                                      display: 'inline-block', 
+                                      cursor: 'pointer',
+                                      borderRadius: '6px',
+                                      overflow: 'hidden',
+                                      border: '1px solid rgba(255,255,255,0.1)',
+                                      lineHeight: 0
+                                    }}
+                                  >
+                                    <img 
+                                      src={url} 
+                                      alt={`收據憑證-${idx + 1}`} 
+                                      style={{ maxHeight: '120px', maxWidth: '100%', objectFit: 'contain' }} 
+                                    />
+                                    <div style={{ position: 'absolute', bottom: '6px', right: '6px', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px', fontSize: '10px', color: 'white', lineHeight: 'normal' }}>
+                                      🔍 點擊放大
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
                             </div>
                           )}

@@ -38,6 +38,7 @@ export interface Expense {
   splits: ExpenseSplit[];
   items?: ExpenseItem[]; // 交易明細清單 (適用於 itemized 模式)
   receiptUrl?: string;   // 交易收據 Public URL
+  receiptUrls?: string[]; // 交易收據 Public URLs (支援多張)
 }
 
 export interface SettlementRecord {
