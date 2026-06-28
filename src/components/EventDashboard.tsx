@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Plus, Users, DollarSign, Share2, Settings, Trash2, Edit2, CheckCircle2, ChevronDown, ChevronUp, Copy } from 'lucide-react';
+import { ArrowLeft, Plus, Users, DollarSign, Share2, Settings, Trash2, Edit2, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
 import type { SplitEvent, Member, Expense, UserSession } from '../types';
-import { calculateSettlements, convertCurrency, serializeEvent, round } from '../utils';
-import { isSupabaseConfigured, supabase } from '../supabase';
+import { calculateSettlements, convertCurrency, round } from '../utils';
+import { supabase } from '../supabase';
 import { ExpenseModal } from './ExpenseModal';
 
 interface EventDashboardProps {
@@ -10,7 +10,6 @@ interface EventDashboardProps {
   onBack: () => void;
   onUpdateEvent: (updatedEvent: SplitEvent) => void;
   currentUser: UserSession;
-  onSwitchSimulatedUser: (session: UserSession) => void;
 }
 
 export const EventDashboard: React.FC<EventDashboardProps> = ({
@@ -18,7 +17,6 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
   onBack,
   onUpdateEvent,
   currentUser,
-  onSwitchSimulatedUser,
 }) => {
   const [activeTab, setActiveTab] = useState<'expenses' | 'settlement' | 'members'>('expenses');
   const [showSettings, setShowSettings] = useState(false);
@@ -48,35 +46,22 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
   const settlements = calculateSettlements(event);
 
   // 複製分享代碼與 URL
+  // 複製分享邀請網址
   const handleShare = () => {
-    const shareUrl = isSupabaseConfigured
-      ? `${window.location.origin}${window.location.pathname}#/join/${event.id}`
-      : `${window.location.origin}${window.location.pathname}#/import/${serializeEvent(event)}`;
+    const shareUrl = `${window.location.origin}${window.location.pathname}#/join/${event.id}`;
     
-    // 試圖複製到剪貼簿
     navigator.clipboard.writeText(shareUrl)
       .then(() => {
-        setToastMsg('分享連結已複製到剪貼簿！');
+        setToastMsg('分享邀請連結已複製！');
         setShowToast(true);
         setTimeout(() => setShowToast(false), 3000);
       })
       .catch(() => {
-        // 退回複製代碼
-        const fallbackText = isSupabaseConfigured ? event.id : serializeEvent(event) || '';
-        navigator.clipboard.writeText(fallbackText);
-        setToastMsg('分享代碼已複製到剪貼簿！');
+        navigator.clipboard.writeText(event.id);
+        setToastMsg('活動 ID 已複製！');
         setShowToast(true);
         setTimeout(() => setShowToast(false), 3000);
       });
-  };
-
-  // 複製單純的分享代碼
-  const handleCopyCode = () => {
-    const codeText = isSupabaseConfigured ? event.id : serializeEvent(event) || '';
-    navigator.clipboard.writeText(codeText);
-    setToastMsg(isSupabaseConfigured ? '雲端活動 ID 已複製！' : '活動代碼已複製！');
-    setShowToast(true);
-    setTimeout(() => setShowToast(false), 3000);
   };
 
   // 新增成員/發送邀請
@@ -92,78 +77,53 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
       return;
     }
 
-    if (isSupabaseConfigured) {
-      if (inputVal) {
-        // A. 邀請已註冊用戶
-        const isEmail = inputVal.includes('@');
-        
-        try {
-          let query = supabase.from('profiles').select('*');
-          if (isEmail) {
-            query = query.eq('email', inputVal.toLowerCase());
-          } else {
-            // 以信箱 @ 前綴搜尋 (例如: input 為 bob，則搜尋 bob@%)
-            query = query.like('email', `${inputVal.toLowerCase()}@%`);
-          }
-
-          const { data: profiles, error } = await query.limit(2);
-
-          if (error) throw error;
-
-          if (!profiles || profiles.length === 0) {
-            alert('找不到該使用者！受邀人必須先註冊 ShareSettle 帳號，請確認信箱或前綴是否正確。');
-            setMemberError('找不到該使用者！受邀人必須先註冊帳號。');
-            return;
-          }
-
-          if (profiles.length > 1) {
-            alert('搜尋到多個符合該前綴的信箱，請輸入完整的 Email 進行邀請！');
-            setMemberError('符合前綴的帳號不唯一，請輸入完整 Email。');
-            return;
-          }
-
-          const profile = profiles[0];
-
-          // 檢查是否重複
-          const exists = event.members.some(
-            (m) => m.email.toLowerCase() === profile.email.toLowerCase()
-          );
-          if (exists) {
-            setMemberError('該成員已在成員清單中！');
-            return;
-          }
-
-          const newMember: Member = {
-            id: profile.id,
-            name: nameVal, // 使用建立者填寫的暱稱（如「小明」），利於活動辨識
-            email: profile.email,
-            paymentMethods: profile.payment_methods || [],
-            status: 'pending', // 標註為待接受邀請
-            isTemporary: false
-          };
-
-          onUpdateEvent({
-            ...event,
-            members: [...event.members, newMember]
-          });
-
-          alert(`已成功向 ${profile.name} 發送邀請！待對方於首頁「接受」後即會加入活動。`);
-          setNewMemberName('');
-          setNewMemberEmail('');
-          setShowAddMember(false);
-        } catch (err: any) {
-          console.error(err);
-          setMemberError(err.message || '查詢雲端使用者發生錯誤。');
+    if (inputVal) {
+      // A. 邀請已註冊用戶
+      const isEmail = inputVal.includes('@');
+      
+      try {
+        let query = supabase.from('profiles').select('*');
+        if (isEmail) {
+          query = query.eq('email', inputVal.toLowerCase());
+        } else {
+          // 以信箱 @ 前綴搜尋 (例如: input 為 bob，則搜尋 bob@%)
+          query = query.like('email', `${inputVal.toLowerCase()}@%`);
         }
-      } else {
-        // B. 建立臨時成員 (無信箱，isTemporary = true)
+
+        const { data: profiles, error } = await query.limit(2);
+
+        if (error) throw error;
+
+        if (!profiles || profiles.length === 0) {
+          alert('找不到該使用者！受邀人必須先註冊 ShareSettle 帳號，請確認信箱或前綴是否正確。');
+          setMemberError('找不到該使用者！受邀人必須先註冊帳號。');
+          return;
+        }
+
+        if (profiles.length > 1) {
+          alert('搜尋到多個符合該前綴的信箱，請輸入完整的 Email 進行邀請！');
+          setMemberError('符合前綴的帳號不唯一，請輸入完整 Email。');
+          return;
+        }
+
+        const profile = profiles[0];
+
+        // 檢查是否重複
+        const exists = event.members.some(
+          (m) => m.email.toLowerCase() === profile.email.toLowerCase()
+        );
+        if (exists) {
+          setMemberError('該成員已在成員清單中！');
+          return;
+        }
+
         const newMember: Member = {
-          id: 'temp_' + Math.random().toString(36).substring(2, 9),
-          name: nameVal,
-          email: '',
-          paymentMethods: [],
-          status: 'active', // 臨時成員直接處於啟用狀態，可以直接記帳
-          isTemporary: true
+          id: profile.id,
+          name: nameVal, // 使用建立者填寫的暱稱（如「小明」），利於活動辨識
+          email: profile.email,
+          paymentMethods: profile.payment_methods || [],
+          status: 'pending', // 標註為待接受邀請
+          isTemporary: false
         };
 
         onUpdateEvent({
@@ -171,42 +131,28 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
           members: [...event.members, newMember]
         });
 
+        alert(`已成功向 ${profile.name} 發送邀請！待對方於首頁「接受」後即會加入活動。`);
         setNewMemberName('');
         setNewMemberEmail('');
         setShowAddMember(false);
+      } catch (err: any) {
+        console.error(err);
+        setMemberError(err.message || '查詢雲端使用者發生錯誤。');
       }
     } else {
-      // 離線/Mock 模式 (信箱必填以區分身分)
-      if (!inputVal) {
-        setMemberError('離線模式下信箱為必填欄位！');
-        return;
-      }
-
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(inputVal)) {
-        setMemberError('請輸入正確的電子信箱格式！');
-        return;
-      }
-
-      const exists = event.members.some(
-        (m) => m.email.toLowerCase() === inputVal.toLowerCase()
-      );
-      if (exists) {
-        setMemberError('該 Email 已在成員列表中！');
-        return;
-      }
-
+      // B. 建立臨時成員 (無信箱，isTemporary = true)
       const newMember: Member = {
-        id: Math.random().toString(36).substring(2, 9),
+        id: 'temp_' + Math.random().toString(36).substring(2, 9),
         name: nameVal,
-        email: inputVal.toLowerCase(),
+        email: '',
         paymentMethods: [],
-        status: 'active'
+        status: 'active', // 臨時成員直接處於啟用狀態，可以直接記帳
+        isTemporary: true
       };
 
       onUpdateEvent({
         ...event,
-        members: [...event.members, newMember],
+        members: [...event.members, newMember]
       });
 
       setNewMemberName('');
@@ -483,43 +429,7 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
         </div>
       )}
 
-      {/* 切換模擬帳號功能 (幫助使用者在本機切換視角測試) */}
-      {!isSupabaseConfigured && (
-        <div className="card-glass" style={{ padding: '10px 14px', marginBottom: '16px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', fontSize: '13px', background: 'rgba(99, 102, 241, 0.05)' }}>
-          <span style={{ color: 'var(--text-secondary)' }}>當前模擬視角:</span>
-          {activeEventMember ? (
-            <span style={{ fontWeight: 'bold', color: 'var(--color-primary-light)' }}>
-              {activeEventMember.name} ({activeEventMember.email})
-            </span>
-          ) : (
-            <span style={{ color: 'var(--color-danger)' }}>
-              非活動成員 ({currentUser.email})
-            </span>
-          )}
-          
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>模擬切換:</span>
-            <select
-              className="input-field"
-              value={activeEventMember?.id || ''}
-              onChange={(e) => {
-                const m = event.members.find((mem) => mem.id === e.target.value);
-                if (m) {
-                  onSwitchSimulatedUser({ email: m.email, name: m.name });
-                }
-              }}
-              style={{ padding: '2px 8px', fontSize: '12px', width: 'auto', background: 'var(--bg-main)', height: '26px', borderRadius: '4px' }}
-            >
-              <option value="" disabled>選擇活動成員</option>
-              {event.members.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      )}
+
 
       {/* 功能分頁選單 */}
       <div className="tabs-container" style={{ marginBottom: '16px' }}>
@@ -1047,18 +957,15 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
               )}
             </div>
 
-            {/* 3. 分享與匯入提示 */}
+            {/* 3. 分享與邀請提示 */}
             <div className="card-glass" style={{ padding: '16px', textAlign: 'center' }}>
-              <h4 style={{ fontSize: '14px', marginBottom: '8px' }}>與朋友同步此帳本</h4>
+              <h4 style={{ fontSize: '14px', marginBottom: '8px' }}>邀請朋友共同分帳</h4>
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-                因為本程式為前端免伺服器運作，您可以點擊「分享活動」複製分享連結，發送給好友，對方即可直接匯入整本帳目。
+                將邀請連結發送給好友，對方點選連結後即可直接加入此雲端分帳帳本，共同進行即時同步記帳！
               </p>
               <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="btn btn-secondary" onClick={handleCopyCode} style={{ flex: 1, padding: '8px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                  <Copy size={13} /> 複製代碼
-                </button>
-                <button className="btn btn-primary" onClick={handleShare} style={{ flex: 2, padding: '8px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                  <Share2 size={13} /> 複製分享連結
+                <button className="btn btn-primary" onClick={handleShare} style={{ flex: 1, padding: '8px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                  <Share2 size={13} /> 複製邀請連結
                 </button>
               </div>
             </div>
@@ -1109,17 +1016,14 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                   </div>
 
                   <div className="form-group" style={{ marginBottom: '16px' }}>
-                    <label className="form-label" style={{ fontSize: '12px' }}>
-                      {isSupabaseConfigured ? "受邀人的電子信箱或信箱前綴 (選填)" : "電子信箱 *"}
-                    </label>
+                    <label className="form-label" style={{ fontSize: '12px' }}>受邀人的電子信箱或信箱前綴 (選填)</label>
                     <input
-                      type={isSupabaseConfigured ? "text" : "email"}
+                      type="text"
                       className="input-field"
-                      placeholder={isSupabaseConfigured ? "例如: bob@test.com 或 bob (留空則為臨時成員)" : "example@email.com"}
+                      placeholder="例如: bob@test.com 或 bob (留空則為臨時成員)"
                       value={newMemberEmail}
                       onChange={(e) => setNewMemberEmail(e.target.value)}
                       style={{ padding: '8px 12px', fontSize: '14px' }}
-                      required={!isSupabaseConfigured}
                     />
                   </div>
 
@@ -1128,7 +1032,7 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                       取消
                     </button>
                     <button type="submit" className="btn btn-primary" style={{ padding: '6px 16px', fontSize: '13px' }}>
-                      {isSupabaseConfigured && newMemberEmail.trim() ? "發送邀請" : "加入成員"}
+                      {newMemberEmail.trim() ? "發送邀請" : "加入成員"}
                     </button>
                   </div>
                 </form>
@@ -1186,7 +1090,7 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {isSupabaseConfigured && (m.isTemporary || !m.email) && (
+                      {(m.isTemporary || !m.email) && (
                         <button
                           className="btn btn-secondary"
                           onClick={() => handleLinkAccount(m.id, m.name)}

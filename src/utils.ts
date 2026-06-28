@@ -182,30 +182,3 @@ export function calculateSettlements(event: SplitEvent): SettlementTransaction[]
 
   return transactions;
 }
-
-// 壓縮與序列化 Event 用於 URL 分享
-export function serializeEvent(event: SplitEvent): string {
-  try {
-    const jsonString = JSON.stringify(event);
-    const encoded = btoa(encodeURIComponent(jsonString));
-    return encoded;
-  } catch (error) {
-    console.error('Failed to serialize event:', error);
-    return '';
-  }
-}
-
-// 解序列化 Event
-export function deserializeEvent(encoded: string): SplitEvent | null {
-  try {
-    const decoded = decodeURIComponent(atob(encoded));
-    const event = JSON.parse(decoded) as SplitEvent;
-    if (event && event.id && event.title && Array.isArray(event.members)) {
-      return event;
-    }
-    return null;
-  } catch (error) {
-    console.error('Failed to deserialize event:', error);
-    return null;
-  }
-}

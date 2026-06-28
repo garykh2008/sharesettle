@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Users, DollarSign, Calendar, LogOut, Import, CreditCard, Trash2 } from 'lucide-react';
+import { Plus, Users, DollarSign, Calendar, LogOut, CreditCard, Trash2 } from 'lucide-react';
 import type { SplitEvent, UserSession, PaymentMethod } from '../types';
-import { isSupabaseConfigured } from '../supabase';
 
 interface EventSelectorProps {
   events: SplitEvent[];
   onCreateEvent: (title: string, currency: 'USD' | 'TWD', rate: number, desc?: string) => void;
   onSelectEvent: (eventId: string) => void;
-  onImportEvent: (eventString: string) => Promise<boolean>;
   currentUser: UserSession;
   onLogout: () => void;
   onSaveUserPaymentMethods: (methods: PaymentMethod[]) => void;
@@ -20,7 +18,6 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
   events,
   onCreateEvent,
   onSelectEvent,
-  onImportEvent,
   currentUser,
   onLogout,
   onSaveUserPaymentMethods,
@@ -33,9 +30,6 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
   const [desc, setDesc] = useState('');
   const [currency, setCurrency] = useState<'USD' | 'TWD'>('TWD');
   const [rate, setRate] = useState(32.0); // 預設 1 USD = 32 TWD
-  const [importString, setImportString] = useState('');
-  const [importError, setImportError] = useState('');
-  const [importSuccess, setImportSuccess] = useState(false);
 
   const [showPaymentEditor, setShowPaymentEditor] = useState(false);
   const [userPaymentMethods, setUserPaymentMethods] = useState<PaymentMethod[]>(currentUser.paymentMethods || []);
@@ -64,26 +58,6 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
     setCurrency('TWD');
     setRate(32.0);
     setShowCreateForm(false);
-  };
-
-  const handleImport = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setImportError('');
-    setImportSuccess(false);
-
-    if (!importString.trim()) {
-      setImportError(isSupabaseConfigured ? '請貼上分享代碼或活動 ID！' : '請貼上分享代碼！');
-      return;
-    }
-
-    const success = await onImportEvent(importString.trim());
-    if (success) {
-      setImportSuccess(true);
-      setImportString('');
-      setTimeout(() => setImportSuccess(false), 3000);
-    } else {
-      setImportError(isSupabaseConfigured ? '無法載入活動，請確認 ID、網址或分享代碼是否正確。' : '無效的分享代碼，請確認格式是否正確。');
-    }
   };
 
   return (
@@ -256,38 +230,8 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
 
       {!showCreateForm ? (
         <div className="animate-fade-in">
-          {/* 匯入分享活動 */}
-          <div className="card-glass" style={{ padding: '16px', marginBottom: '24px' }}>
-            <h3 style={{ fontSize: '15px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Import size={16} className="title-gradient" /> 匯入分享的活動
-            </h3>
-            {importError && (
-              <div className="alert-banner alert-banner-warning" style={{ fontSize: '13px', padding: '8px 12px', marginBottom: '12px' }}>
-                {importError}
-              </div>
-            )}
-            {importSuccess && (
-              <div className="alert-banner alert-banner-info" style={{ fontSize: '13px', padding: '8px 12px', marginBottom: '12px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)', color: 'var(--color-secondary-light)' }}>
-                活動匯入成功！已加入列表。
-              </div>
-            )}
-            <form onSubmit={handleImport} style={{ display: 'flex', gap: '10px' }}>
-              <input
-                type="text"
-                className="input-field"
-                placeholder={isSupabaseConfigured ? "貼上活動 ID 或分享網址..." : "貼上活動分享代碼..."}
-                value={importString}
-                onChange={(e) => setImportString(e.target.value)}
-                style={{ flex: 1, padding: '8px 12px', fontSize: '14px' }}
-              />
-              <button type="submit" className="btn btn-secondary" style={{ padding: '8px 16px', fontSize: '14px' }}>
-                匯入
-              </button>
-            </form>
-          </div>
-
           {/* 📩 新的活動邀請區塊 */}
-          {isSupabaseConfigured && pendingInvites.length > 0 && (
+          {pendingInvites.length > 0 && (
             <div style={{ marginBottom: '28px' }}>
               <h2 style={{ fontSize: '16px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--color-primary-light)' }}>
                 📩 新的活動邀請 ({pendingInvites.length})
@@ -363,11 +307,6 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
                       )}
                     </h3>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      {isSupabaseConfigured && (
-                        <span className="badge" style={{ background: 'rgba(99,102,241,0.1)', color: 'var(--color-primary-light)', border: '1px solid rgba(99,102,241,0.15)', textTransform: 'none', fontSize: '9px', padding: '1px 5px' }}>
-                          ☁️ 雲端
-                        </span>
-                      )}
                       <span className={`badge ${evt.defaultCurrency === 'USD' ? 'badge-indigo' : 'badge-emerald'}`}>
                         {evt.defaultCurrency}
                       </span>
