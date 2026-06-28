@@ -61,6 +61,7 @@ export interface SplitEvent {
 }
 
 export interface UserSession {
+  id?: string; // Supabase Auth UID
   email: string;
   name: string;
   paymentMethods?: PaymentMethod[];

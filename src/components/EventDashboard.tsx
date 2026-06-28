@@ -344,27 +344,29 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
           </span>
         )}
         
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>模擬切換:</span>
-          <select
-            className="input-field"
-            value={activeEventMember?.id || ''}
-            onChange={(e) => {
-              const m = event.members.find((mem) => mem.id === e.target.value);
-              if (m) {
-                onSwitchSimulatedUser({ email: m.email, name: m.name });
-              }
-            }}
-            style={{ padding: '2px 8px', fontSize: '12px', width: 'auto', background: 'var(--bg-main)', height: '26px', borderRadius: '4px' }}
-          >
-            <option value="" disabled>選擇活動成員</option>
-            {event.members.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        {!isSupabaseConfigured && (
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>模擬切換:</span>
+            <select
+              className="input-field"
+              value={activeEventMember?.id || ''}
+              onChange={(e) => {
+                const m = event.members.find((mem) => mem.id === e.target.value);
+                if (m) {
+                  onSwitchSimulatedUser({ email: m.email, name: m.name });
+                }
+              }}
+              style={{ padding: '2px 8px', fontSize: '12px', width: 'auto', background: 'var(--bg-main)', height: '26px', borderRadius: '4px' }}
+            >
+              <option value="" disabled>選擇活動成員</option>
+              {event.members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* 功能分頁選單 */}

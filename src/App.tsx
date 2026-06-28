@@ -16,79 +16,83 @@ function App() {
   const [showToast, setShowToast] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
 
-  // 取得全域個人收款設定
-  const getUserProfile = (email: string): PaymentMethod[] => {
-    try {
-      const profilesStr = localStorage.getItem('sharesettle_user_profiles');
-      if (profilesStr) {
-        const profiles = JSON.parse(profilesStr);
-        if (profiles[email.toLowerCase()]) {
-          return profiles[email.toLowerCase()].paymentMethods || [];
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    return [];
-  };
-
-  // 保存全域個人收款設定
-  const saveUserProfile = (email: string, name: string, paymentMethods: PaymentMethod[]) => {
-    try {
-      const profilesStr = localStorage.getItem('sharesettle_user_profiles') || '{}';
-      const profiles = JSON.parse(profilesStr);
-      profiles[email.toLowerCase()] = { name, email, paymentMethods };
-      localStorage.setItem('sharesettle_user_profiles', JSON.stringify(profiles));
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  // 同步收款設定到本機所有活動中該 Email 對應的成員
-  const syncUserPaymentMethodsToEvents = (email: string, methods: PaymentMethod[]) => {
-    setEvents((prevEvents) => {
-      const updated = prevEvents.map(evt => {
-        const memberIdx = evt.members.findIndex(m => m.email.toLowerCase() === email.toLowerCase());
-        if (memberIdx !== -1) {
-          const updatedMembers = [...evt.members];
-          updatedMembers[memberIdx] = {
-            ...updatedMembers[memberIdx],
-            paymentMethods: methods
-          };
-          return { ...evt, members: updatedMembers };
-        }
-        return evt;
-      });
-      localStorage.setItem('sharesettle_events', JSON.stringify(updated));
-      return updated;
-    });
-  };
-
-  // 1. 於元件掛載時從 LocalStorage 載入資料，並檢查 URL 分享連結
+  // 1. 於元件掛載時訂閱 Supabase Auth 狀態，並處理 Hash 連結
   useEffect(() => {
-    // 載入登入狀態
-    const storedSession = localStorage.getItem('sharesettle_session');
-    if (storedSession) {
-      try {
-        const session = JSON.parse(storedSession) as UserSession;
-        const paymentMethods = getUserProfile(session.email);
-        setCurrentUser({ ...session, paymentMethods });
-      } catch (e) {
-        console.error('Failed to parse session', e);
+    if (isSupabaseConfigured) {
+      // A-1. 獲取當前已登入 Session
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) {
+          syncSession(session);
+        } else {
+          // 嘗試載入本機登入快取做緩衝
+          const storedSession = localStorage.getItem('sharesettle_session');
+          if (storedSession) {
+            setCurrentUser(JSON.parse(storedSession));
+          }
+        }
+      });
+
+      // A-2. 監聽 Auth 狀態改變
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (session) {
+          syncSession(session);
+        } else {
+          setCurrentUser(null);
+          setEvents([]);
+          localStorage.removeItem('sharesettle_session');
+        }
+      });
+
+      // 載入本機活動快取作為預載
+      const savedEvents = localStorage.getItem('sharesettle_events');
+      if (savedEvents) {
+        setEvents(JSON.parse(savedEvents));
+      }
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    } else {
+      // B. 傳統 Mock 登入模式
+      const storedSession = localStorage.getItem('sharesettle_session');
+      if (storedSession) {
+        setCurrentUser(JSON.parse(storedSession));
+      }
+      const savedEvents = localStorage.getItem('sharesettle_events');
+      if (savedEvents) {
+        setEvents(JSON.parse(savedEvents));
       }
     }
+  }, []);
 
-    // 載入本機活動快取
-    const savedEvents = localStorage.getItem('sharesettle_events');
-    if (savedEvents) {
-      setEvents(JSON.parse(savedEvents));
-    }
-
-    // 2. 檢查 URL 是否帶有匯入 Hash: #/import/[serialized_data] 或 #/join/[event_id]
+  // 當 URL Hash 改變時，檢查是否有加入連結
+  useEffect(() => {
     const handleHashImport = () => {
       const hash = window.location.hash;
-      
-      // A. 舊型 Base64 匯入
+
+      // 雲端 Event ID 匯入: #/join/[event_id]
+      if (hash && hash.startsWith('#/join/')) {
+        const eventId = hash.replace('#/join/', '');
+        if (eventId) {
+          if (isSupabaseConfigured) {
+            // 檢查是否已登入
+            const storedSession = localStorage.getItem('sharesettle_session');
+            if (storedSession) {
+              const sessionUser = JSON.parse(storedSession) as UserSession;
+              handleJoinEventById(eventId, sessionUser);
+            } else {
+              // 未登入，先儲存待加入 ID，引導登入
+              localStorage.setItem('sharesettle_pending_join', eventId);
+              alert("您需要先登入或註冊帳號。登入成功後，將會自動為您開啟並加入該分帳活動！");
+            }
+          } else {
+            alert("本機尚未設定 Supabase 雲端金鑰，無法使用雲端加入功能。");
+          }
+          window.location.hash = '';
+        }
+      }
+
+      // 舊版 Base64 匯入相容
       if (hash && hash.startsWith('#/import/')) {
         const encodedData = hash.replace('#/import/', '');
         if (encodedData) {
@@ -107,162 +111,104 @@ function App() {
             });
             setSelectedEventId(importedEvent.id);
             window.location.hash = '';
-
-            setToastMsg(`已成功匯入「${importedEvent.title}」活動！`);
+            setToastMsg(`已成功匯入本機活動「${importedEvent.title}」！`);
             setShowToast(true);
             setTimeout(() => setShowToast(false), 3000);
-          } else {
-            alert('分享代碼解析失敗，請確認網址完整性。');
-            window.location.hash = '';
           }
-        }
-      }
-
-      // B. 新型雲端 Event ID 匯入: #/join/[event_id]
-      if (hash && hash.startsWith('#/join/')) {
-        const eventId = hash.replace('#/join/', '');
-        if (eventId) {
-          if (isSupabaseConfigured) {
-            supabase
-              .from('events')
-              .select('*')
-              .eq('id', eventId)
-              .single()
-              .then(({ data, error }) => {
-                if (error) {
-                  console.error(error);
-                  alert("無法載入該雲端活動，請確認活動 ID 是否正確。");
-                  return;
-                }
-                if (data) {
-                  const mappedEvent: SplitEvent = {
-                    id: data.id,
-                    title: data.title,
-                    description: data.description,
-                    defaultCurrency: data.default_currency as 'USD' | 'TWD',
-                    usdToTwdRate: Number(data.usd_to_twd_rate),
-                    status: data.status as 'active' | 'settled',
-                    members: data.members as Member[],
-                    expenses: data.expenses as Expense[],
-                    settlements: data.settlements as any,
-                    createdAt: data.created_at
-                  };
-
-                  setEvents((prevEvents) => {
-                    const existsIdx = prevEvents.findIndex((e) => e.id === mappedEvent.id);
-                    let updated = [...prevEvents];
-                    if (existsIdx >= 0) {
-                      updated[existsIdx] = mappedEvent;
-                    } else {
-                      updated = [mappedEvent, ...updated];
-                    }
-                    localStorage.setItem('sharesettle_events', JSON.stringify(updated));
-                    return updated;
-                  });
-
-                  setSelectedEventId(mappedEvent.id);
-                  setToastMsg(`已成功加入雲端活動「${mappedEvent.title}」！`);
-                  setShowToast(true);
-                  setTimeout(() => setShowToast(false), 3000);
-                }
-              });
-          } else {
-            alert("本機尚未設定 Supabase 雲端金鑰，無法使用雲端加入網址。");
-          }
-          window.location.hash = '';
         }
       }
     };
 
     handleHashImport();
     window.addEventListener('hashchange', handleHashImport);
-
     return () => {
       window.removeEventListener('hashchange', handleHashImport);
     };
-  }, []);
+  }, [currentUser]);
 
-  // 訂閱雲端即時自動同步 (當選取某個活動時)
+  // 同步 Auth 使用者會話與雲端 Profile
+  const syncSession = async (session: any) => {
+    const email = session.user.email || '';
+    let name = session.user.user_metadata?.name || email.split('@')[0];
+    let paymentMethods: PaymentMethod[] = [];
+
+    try {
+      // 向 profiles 表查詢詳細收款與姓名資料
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+      
+      if (profile) {
+        name = profile.name;
+        paymentMethods = profile.payment_methods || [];
+      }
+    } catch (e) {
+      console.warn("User profile details not yet in profiles table, using auth metadata", e);
+    }
+
+    const updatedSession: UserSession = {
+      id: session.user.id,
+      email,
+      name,
+      paymentMethods
+    };
+    
+    setCurrentUser(updatedSession);
+    localStorage.setItem('sharesettle_session', JSON.stringify(updatedSession));
+    
+    // 檢查是否有未完成的受邀加入活動
+    const pendingJoinId = localStorage.getItem('sharesettle_pending_join');
+    if (pendingJoinId) {
+      localStorage.removeItem('sharesettle_pending_join');
+      handleJoinEventById(pendingJoinId, updatedSession);
+    }
+  };
+
+  // 訂閱當前登入者有權限檢視的所有雲端活動更新 (結合 Postgres RLS 過濾)
   useEffect(() => {
-    if (!selectedEventId || !isSupabaseConfigured) return;
+    if (!currentUser || !isSupabaseConfigured) return;
 
-    // 進入活動時，先向 Supabase 獲取最新狀態更新本機
-    const fetchFreshEvent = async () => {
+    const fetchUserEvents = async () => {
       try {
         const { data, error } = await supabase
           .from('events')
           .select('*')
-          .eq('id', selectedEventId)
-          .single();
+          .order('created_at', { ascending: false });
         
         if (error) throw error;
         if (data) {
-          const mappedEvent: SplitEvent = {
-            id: data.id,
-            title: data.title,
-            description: data.description,
-            defaultCurrency: data.default_currency as 'USD' | 'TWD',
-            usdToTwdRate: Number(data.usd_to_twd_rate),
-            status: data.status as 'active' | 'settled',
-            members: data.members as Member[],
-            expenses: data.expenses as Expense[],
-            settlements: data.settlements as any,
-            createdAt: data.created_at
-          };
-
-          setEvents((prev) => {
-            const idx = prev.findIndex(e => e.id === selectedEventId);
-            let updated = [...prev];
-            if (idx >= 0) {
-              updated[idx] = mappedEvent;
-            } else {
-              updated = [mappedEvent, ...updated];
-            }
-            localStorage.setItem('sharesettle_events', JSON.stringify(updated));
-            return updated;
-          });
+          const mapped: SplitEvent[] = data.map(d => ({
+            id: d.id,
+            title: d.title,
+            description: d.description,
+            defaultCurrency: d.default_currency as 'USD' | 'TWD',
+            usdToTwdRate: Number(d.usd_to_twd_rate),
+            status: d.status as 'active' | 'settled',
+            members: d.members as Member[],
+            expenses: d.expenses as Expense[],
+            settlements: d.settlements as any,
+            createdAt: d.created_at
+          }));
+          setEvents(mapped);
+          localStorage.setItem('sharesettle_events', JSON.stringify(mapped));
         }
       } catch (e) {
-        console.error("Failed to fetch fresh event from Supabase", e);
+        console.error("Failed to load user events from Supabase", e);
       }
     };
 
-    fetchFreshEvent();
+    fetchUserEvents();
 
-    // 訂閱活動更新通道
+    // 訂閱活動表的所有變更
     const channel = supabase
-      .channel(`event-changes-${selectedEventId}`)
+      .channel('user-events-realtime')
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'events', filter: `id=eq.${selectedEventId}` },
-        (payload) => {
-          const data = payload.new as any;
-          if (data) {
-            const mappedEvent: SplitEvent = {
-              id: data.id,
-              title: data.title,
-              description: data.description,
-              defaultCurrency: data.default_currency as 'USD' | 'TWD',
-              usdToTwdRate: Number(data.usd_to_twd_rate),
-              status: data.status as 'active' | 'settled',
-              members: data.members as Member[],
-              expenses: data.expenses as Expense[],
-              settlements: data.settlements as any,
-              createdAt: data.created_at
-            };
-
-            setEvents((prev) => {
-              const idx = prev.findIndex(e => e.id === selectedEventId);
-              let updated = [...prev];
-              if (idx >= 0) {
-                updated[idx] = mappedEvent;
-              } else {
-                updated = [mappedEvent, ...updated];
-              }
-              localStorage.setItem('sharesettle_events', JSON.stringify(updated));
-              return updated;
-            });
-          }
+        { event: '*', schema: 'public', table: 'events' },
+        () => {
+          fetchUserEvents();
         }
       )
       .subscribe();
@@ -270,34 +216,108 @@ function App() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [selectedEventId]);
+  }, [currentUser]);
 
-  // 當 events 改變時，自動寫入 LocalStorage 備份快取
+  // 處理點擊雲端連結加入分帳活動的邏輯
+  const handleJoinEventById = async (eventId: string, sessionUser: UserSession) => {
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .select('*')
+        .eq('id', eventId)
+        .single();
+      
+      if (error) throw error;
+      if (data) {
+        const membersList = data.members as Member[];
+        const isMember = membersList.some(m => m.email.toLowerCase() === sessionUser.email.toLowerCase());
+        
+        if (!isMember) {
+          if (window.confirm(`您被邀請參與分帳活動「${data.title}」，是否確定加入此活動？`)) {
+            const newMember: Member = {
+              id: Math.random().toString(36).substring(2, 9),
+              name: sessionUser.name,
+              email: sessionUser.email,
+              paymentMethods: sessionUser.paymentMethods || []
+            };
+            const updatedMembers = [...membersList, newMember];
+            
+            const { error: updateError } = await supabase
+              .from('events')
+              .update({ members: updatedMembers })
+              .eq('id', eventId);
+            
+            if (updateError) throw updateError;
+            setToastMsg(`成功加入活動「${data.title}」！`);
+          } else {
+            return;
+          }
+        }
+        
+        const mappedEvent: SplitEvent = {
+          id: data.id,
+          title: data.title,
+          description: data.description,
+          defaultCurrency: data.default_currency as 'USD' | 'TWD',
+          usdToTwdRate: Number(data.usd_to_twd_rate),
+          status: data.status as 'active' | 'settled',
+          members: isMember ? membersList : [...membersList, {
+            id: Math.random().toString(36).substring(2, 9),
+            name: sessionUser.name,
+            email: sessionUser.email,
+            paymentMethods: sessionUser.paymentMethods || []
+          }],
+          expenses: data.expenses as Expense[],
+          settlements: data.settlements as any,
+          createdAt: data.created_at
+        };
+
+        setEvents((prev) => {
+          const idx = prev.findIndex(e => e.id === mappedEvent.id);
+          let updated = [...prev];
+          if (idx >= 0) {
+            updated[idx] = mappedEvent;
+          } else {
+            updated = [mappedEvent, ...updated];
+          }
+          localStorage.setItem('sharesettle_events', JSON.stringify(updated));
+          return updated;
+        });
+
+        setSelectedEventId(mappedEvent.id);
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 3000);
+      }
+    } catch (e) {
+      console.error("Failed to join event", e);
+      alert("無法載入或加入此雲端活動，請確認連結是否正確。");
+    }
+  };
+
+  // 當 events 改變時寫入本機快取
   const saveEventsToStorage = (updatedEvents: SplitEvent[]) => {
     setEvents(updatedEvents);
     localStorage.setItem('sharesettle_events', JSON.stringify(updatedEvents));
   };
 
-  // 登入處理
+  // 登入處理 (傳統模擬模式的後備)
   const handleLogin = (session: UserSession) => {
-    const paymentMethods = getUserProfile(session.email);
-    const updatedSession = { ...session, paymentMethods };
-    setCurrentUser(updatedSession);
-    localStorage.setItem('sharesettle_session', JSON.stringify(updatedSession));
-    
-    // 同步到本機所有活動
-    syncUserPaymentMethodsToEvents(updatedSession.email, paymentMethods);
-
+    setCurrentUser(session);
+    localStorage.setItem('sharesettle_session', JSON.stringify(session));
     setToastMsg(`歡迎回來，${session.name}！`);
     setShowToast(true);
     setTimeout(() => setShowToast(false), 2000);
   };
 
   // 登出處理
-  const handleLogout = () => {
-    if (window.confirm('確定要登出嗎？登出將清除本機身分記錄。')) {
+  const handleLogout = async () => {
+    if (window.confirm('確定要登出嗎？')) {
+      if (isSupabaseConfigured) {
+        await supabase.auth.signOut();
+      }
       setCurrentUser(null);
       setSelectedEventId(null);
+      setEvents([]);
       localStorage.removeItem('sharesettle_session');
     }
   };
@@ -310,7 +330,7 @@ function App() {
       id: Math.random().toString(36).substring(2, 9),
       name: currentUser.name,
       email: currentUser.email,
-      paymentMethods: currentUser.paymentMethods || [] // 帶入個人收款設定
+      paymentMethods: currentUser.paymentMethods || []
     };
 
     const newEvent: SplitEvent = {
@@ -345,7 +365,7 @@ function App() {
       }
     }
 
-    // B. 更新本地 cache
+    // B. 更新本地快取
     const updated = [newEvent, ...events];
     saveEventsToStorage(updated);
     setSelectedEventId(newEvent.id);
@@ -355,7 +375,7 @@ function App() {
     setTimeout(() => setShowToast(false), 2000);
   };
 
-  // 匯入分帳活動 (同時支援手動貼上 Legacy 壓縮碼，或新版雲端 Event ID / Share URL)
+  // 匯入活動
   const handleImportEventString = async (input: string): Promise<boolean> => {
     const trimmedInput = input.trim();
     if (!trimmedInput) return false;
@@ -373,7 +393,6 @@ function App() {
       saveEventsToStorage(updated);
       setSelectedEventId(importedEvent.id);
       
-      // 嘗試回寫雲端以防止雲端沒有此活動
       if (isSupabaseConfigured) {
         supabase.from('events').insert({
           id: importedEvent.id,
@@ -386,7 +405,7 @@ function App() {
           expenses: importedEvent.expenses,
           settlements: importedEvent.settlements
         }).then(({ error }) => {
-          if (error && error.code !== '23505') { // 23505 = unique_violation, 忽略已存在錯誤
+          if (error && error.code !== '23505') {
             console.error("Supabase back-write error", error);
           }
         });
@@ -394,68 +413,27 @@ function App() {
       return true;
     }
 
-    // 2. 如果不是 Base64，且雲端已配置，視為 Event ID 或 /join/ 網址
-    if (isSupabaseConfigured) {
+    // 2. 雲端連結或 ID 加入
+    if (isSupabaseConfigured && currentUser) {
       let eventId = trimmedInput;
       if (eventId.includes('#/join/')) {
         eventId = eventId.substring(eventId.indexOf('#/join/') + 7);
       }
-      // 移除可能附加的任何 query params
       if (eventId.includes('?')) {
         eventId = eventId.split('?')[0];
       }
 
-      try {
-        const { data, error } = await supabase
-          .from('events')
-          .select('*')
-          .eq('id', eventId)
-          .single();
-        
-        if (error) throw error;
-        if (data) {
-          const cloudEvent: SplitEvent = {
-            id: data.id,
-            title: data.title,
-            description: data.description,
-            defaultCurrency: data.default_currency as 'USD' | 'TWD',
-            usdToTwdRate: Number(data.usd_to_twd_rate),
-            status: data.status as 'active' | 'settled',
-            members: data.members as Member[],
-            expenses: data.expenses as Expense[],
-            settlements: data.settlements as any,
-            createdAt: data.created_at
-          };
-
-          setEvents((prevEvents) => {
-            const existsIdx = prevEvents.findIndex((e) => e.id === cloudEvent.id);
-            let updated = [...prevEvents];
-            if (existsIdx >= 0) {
-              updated[existsIdx] = cloudEvent;
-            } else {
-              updated = [cloudEvent, ...updated];
-            }
-            localStorage.setItem('sharesettle_events', JSON.stringify(updated));
-            return updated;
-          });
-
-          setSelectedEventId(cloudEvent.id);
-          return true;
-        }
-      } catch (e) {
-        console.error("Supabase import error", e);
-      }
+      await handleJoinEventById(eventId, currentUser);
+      return true;
     }
     return false;
   };
 
-  // 更新單一活動 (同步推送到 Supabase 雲端，並觸發所有用戶端的訂閱更新)
+  // 更新單一活動 (推動至 Supabase)
   const handleUpdateEvent = (updatedEvent: SplitEvent) => {
-    // A. 樂觀更新本機 cache
     const updated = events.map((e) => (e.id === updatedEvent.id ? updatedEvent : e));
     saveEventsToStorage(updated);
 
-    // B. 非同步寫入 Supabase (不卡 UI 進度)
     if (isSupabaseConfigured) {
       supabase
         .from('events')
@@ -481,30 +459,65 @@ function App() {
 
   // 切換模擬身分視角
   const handleSwitchSimulatedUser = (session: UserSession) => {
-    const paymentMethods = getUserProfile(session.email);
-    const updatedSession = { ...session, paymentMethods };
-    setCurrentUser(updatedSession);
-    localStorage.setItem('sharesettle_session', JSON.stringify(updatedSession));
-
-    // 同步到本機所有活動
-    syncUserPaymentMethodsToEvents(updatedSession.email, paymentMethods);
-    
+    setCurrentUser(session);
     setToastMsg(`已切換為「${session.name}」的視角！`);
     setShowToast(true);
     setTimeout(() => setShowToast(false), 2000);
   };
 
-  // 儲存使用者個人收款設定
-  const handleSaveUserPaymentMethods = (methods: PaymentMethod[]) => {
+  // 儲存使用者個人收款設定 (更新 profiles 表與雲端觸發同步)
+  const handleSaveUserPaymentMethods = async (methods: PaymentMethod[]) => {
     if (!currentUser) return;
+
+    if (isSupabaseConfigured && currentUser.id) {
+      try {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ payment_methods: methods })
+          .eq('id', currentUser.id);
+        
+        if (error) throw error;
+        setToastMsg('個人收款設定已儲存至雲端！');
+      } catch (e) {
+        console.error("Failed to save profiles to database", e);
+        setToastMsg('雲端儲存失敗，已暫存至本地。');
+      }
+    } else {
+      setToastMsg('個人收款設定已儲存！');
+    }
+
     const updatedSession = { ...currentUser, paymentMethods: methods };
     setCurrentUser(updatedSession);
     localStorage.setItem('sharesettle_session', JSON.stringify(updatedSession));
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 2000);
+  };
 
-    saveUserProfile(currentUser.email, currentUser.name, methods);
-    syncUserPaymentMethodsToEvents(currentUser.email, methods);
+  // 刪除/退出雲端或本地活動
+  const handleDeleteEvent = async (id: string) => {
+    // 1. 本地移出
+    const updated = events.filter((e) => e.id !== id);
+    saveEventsToStorage(updated);
+    if (selectedEventId === id) {
+      setSelectedEventId(null);
+    }
 
-    setToastMsg('您的個人收款設定已儲存！');
+    // 2. 雲端同步刪除 (會受 RLS 安全限制，防範越權刪除)
+    if (isSupabaseConfigured) {
+      try {
+        const { error } = await supabase
+          .from('events')
+          .delete()
+          .eq('id', id);
+        if (error) throw error;
+        setToastMsg('活動已成功移出！');
+      } catch (e) {
+        console.error("Failed to delete event", e);
+        setToastMsg('已將活動從列表移出。');
+      }
+    } else {
+      setToastMsg('活動已成功刪除。');
+    }
     setShowToast(true);
     setTimeout(() => setShowToast(false), 2000);
   };
@@ -514,7 +527,6 @@ function App() {
 
   return (
     <>
-      {/* 定義全域 SVG 漸層，提供 Lucide 等圖示使用 */}
       <svg width="0" height="0" style={{ position: 'absolute' }}>
         <defs>
           <linearGradient id="indigo-emerald-grad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -525,7 +537,6 @@ function App() {
       </svg>
 
       <div className="app-container">
-        {/* 標題欄：非登入狀態與活動詳情狀態有不同標題 */}
         <header className="header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <ShieldCheck size={24} style={{ stroke: 'url(#indigo-emerald-grad)' }} />
@@ -536,7 +547,7 @@ function App() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             {isSupabaseConfigured ? (
               <span className="badge badge-emerald" style={{ fontSize: '9px', textTransform: 'none', background: 'rgba(16, 185, 129, 0.08)' }}>
-                ☁️ 雲端已連線
+                ☁️ 雲端同步中
               </span>
             ) : (
               <span className="badge badge-rose" style={{ fontSize: '9px', textTransform: 'none', background: 'rgba(244, 63, 94, 0.08)' }}>
@@ -567,6 +578,7 @@ function App() {
               currentUser={currentUser}
               onLogout={handleLogout}
               onSaveUserPaymentMethods={handleSaveUserPaymentMethods}
+              onDeleteEvent={handleDeleteEvent}
             />
           )}
         </main>

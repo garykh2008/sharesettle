@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Users, DollarSign, Calendar, LogOut, Import, CreditCard } from 'lucide-react';
+import { Plus, Users, DollarSign, Calendar, LogOut, Import, CreditCard, Trash2 } from 'lucide-react';
 import type { SplitEvent, UserSession, PaymentMethod } from '../types';
 import { isSupabaseConfigured } from '../supabase';
 
@@ -11,6 +11,7 @@ interface EventSelectorProps {
   currentUser: UserSession;
   onLogout: () => void;
   onSaveUserPaymentMethods: (methods: PaymentMethod[]) => void;
+  onDeleteEvent?: (eventId: string) => void;
 }
 
 export const EventSelector: React.FC<EventSelectorProps> = ({
@@ -21,6 +22,7 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
   currentUser,
   onLogout,
   onSaveUserPaymentMethods,
+  onDeleteEvent,
 }) => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [title, setTitle] = useState('');
@@ -326,6 +328,20 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
                     <span style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
                       <Calendar size={12} /> {new Date(evt.createdAt).toLocaleDateString()}
                     </span>
+                    {onDeleteEvent && (
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm(`確定要刪除/退出「${evt.title}」活動嗎？此操作將在雲端及本地永久刪除此活動。`)) {
+                            onDeleteEvent(evt.id);
+                          }
+                        }}
+                        style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', marginLeft: '8px' }}
+                        title="刪除活動"
+                      >
+                        <Trash2 size={12} style={{ color: 'var(--color-danger)' }} />
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}
