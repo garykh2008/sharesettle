@@ -449,9 +449,6 @@ function App() {
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span className="badge badge-emerald" style={{ fontSize: '9px', textTransform: 'none', background: 'rgba(16, 185, 129, 0.08)' }}>
-              ☁️ 雲端同步中
-            </span>
             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>v1.0.0</span>
           </div>
         </header>
