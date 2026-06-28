@@ -493,6 +493,43 @@ function App() {
     setTimeout(() => setShowToast(false), 2000);
   };
 
+  // 接受雲端活動邀請
+  const handleAcceptInvite = async (eventId: string) => {
+    if (!currentUser) return;
+    const evt = events.find((e) => e.id === eventId);
+    if (!evt) return;
+
+    const updatedMembers = evt.members.map((m) =>
+      m.email.toLowerCase() === currentUser.email.toLowerCase()
+        ? { ...m, status: 'active' as const }
+        : m
+    );
+
+    const updatedEvent = { ...evt, members: updatedMembers };
+    handleUpdateEvent(updatedEvent);
+    setToastMsg(`已接受活動「${evt.title}」的邀請！`);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 2000);
+  };
+
+  // 拒絕雲端活動邀請
+  const handleDeclineInvite = async (eventId: string) => {
+    if (!currentUser) return;
+    const evt = events.find((e) => e.id === eventId);
+    if (!evt) return;
+
+    // 將自己移出 members 陣列
+    const updatedMembers = evt.members.filter((m) =>
+      m.email.toLowerCase() !== currentUser.email.toLowerCase()
+    );
+
+    const updatedEvent = { ...evt, members: updatedMembers };
+    handleUpdateEvent(updatedEvent);
+    setToastMsg(`已拒絕活動「${evt.title}」的邀請。`);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 2000);
+  };
+
   // 刪除/退出雲端或本地活動
   const handleDeleteEvent = async (id: string) => {
     // 1. 本地移出
@@ -579,6 +616,8 @@ function App() {
               onLogout={handleLogout}
               onSaveUserPaymentMethods={handleSaveUserPaymentMethods}
               onDeleteEvent={handleDeleteEvent}
+              onAcceptInvite={handleAcceptInvite}
+              onDeclineInvite={handleDeclineInvite}
             />
           )}
         </main>

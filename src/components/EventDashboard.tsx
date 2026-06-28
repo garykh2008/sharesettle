@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Plus, Users, DollarSign, Share2, Settings, Trash2, Edit2, CheckCircle2, ChevronDown, ChevronUp, Copy } from 'lucide-react';
-import type { SplitEvent, Member, Expense, UserSession, PaymentMethod } from '../types';
+import type { SplitEvent, Member, Expense, UserSession } from '../types';
 import { calculateSettlements, convertCurrency, serializeEvent, round } from '../utils';
-import { isSupabaseConfigured } from '../supabase';
+import { isSupabaseConfigured, supabase } from '../supabase';
 import { ExpenseModal } from './ExpenseModal';
 
 interface EventDashboardProps {
@@ -79,60 +79,107 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
     setTimeout(() => setShowToast(false), 3000);
   };
 
-  // 新增成員
-  const handleAddMember = (e: React.FormEvent) => {
+  // 新增成員/發送邀請
+  const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
     setMemberError('');
 
-    if (!newMemberName.trim() || !newMemberEmail.trim()) {
-      setMemberError('請填寫完整資訊！');
-      return;
-    }
+    const inputVal = newMemberEmail.trim();
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(newMemberEmail.trim())) {
-      setMemberError('請輸入正確的電子信箱格式！');
-      return;
-    }
-
-    // 檢查 email 是否重複
-    const exists = event.members.some(
-      (m) => m.email.toLowerCase() === newMemberEmail.trim().toLowerCase()
-    );
-    if (exists) {
-      setMemberError('該 Email 已在成員列表中！');
-      return;
-    }
-
-    let paymentMethods: PaymentMethod[] = [];
-    try {
-      const profilesStr = localStorage.getItem('sharesettle_user_profiles');
-      if (profilesStr) {
-        const profiles = JSON.parse(profilesStr);
-        const emailKey = newMemberEmail.trim().toLowerCase();
-        if (profiles[emailKey] && profiles[emailKey].paymentMethods) {
-          paymentMethods = profiles[emailKey].paymentMethods;
-        }
+    if (isSupabaseConfigured) {
+      if (!inputVal) {
+        setMemberError('請輸入電子信箱或使用者 ID！');
+        return;
       }
-    } catch (e) {
-      console.error(e);
+
+      const isEmail = inputVal.includes('@');
+      
+      try {
+        let query = supabase.from('profiles').select('*');
+        if (isEmail) {
+          query = query.eq('email', inputVal.toLowerCase());
+        } else {
+          query = query.eq('id', inputVal);
+        }
+
+        const { data: profile, error } = await query.maybeSingle();
+
+        if (error) throw error;
+
+        if (!profile) {
+          alert('找不到該使用者！受邀人必須先註冊 ShareSettle 帳號，請確認 Email 或 ID 是否正確。');
+          setMemberError('找不到該使用者！受邀人必須先註冊帳號。');
+          return;
+        }
+
+        // 檢查是否重複
+        const exists = event.members.some(
+          (m) => m.email.toLowerCase() === profile.email.toLowerCase()
+        );
+        if (exists) {
+          setMemberError('該成員已在成員清單中！');
+          return;
+        }
+
+        const newMember: Member = {
+          id: profile.id,
+          name: profile.name,
+          email: profile.email,
+          paymentMethods: profile.payment_methods || [],
+          status: 'pending' // 標註為待接受邀請
+        };
+
+        onUpdateEvent({
+          ...event,
+          members: [...event.members, newMember]
+        });
+
+        alert(`已成功向 ${profile.name} 發送邀請！待對方於首頁「接受」後即會加入活動。`);
+        setNewMemberName('');
+        setNewMemberEmail('');
+        setShowAddMember(false);
+      } catch (err: any) {
+        console.error(err);
+        setMemberError(err.message || '查詢雲端使用者發生錯誤。');
+      }
+    } else {
+      // 離線/Mock 模式
+      if (!newMemberName.trim() || !inputVal) {
+        setMemberError('請填寫完整資訊！');
+        return;
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(inputVal)) {
+        setMemberError('請輸入正確的電子信箱格式！');
+        return;
+      }
+
+      const exists = event.members.some(
+        (m) => m.email.toLowerCase() === inputVal.toLowerCase()
+      );
+      if (exists) {
+        setMemberError('該 Email 已在成員列表中！');
+        return;
+      }
+
+      const newMember: Member = {
+        id: Math.random().toString(36).substring(2, 9),
+        name: newMemberName.trim(),
+        email: inputVal.toLowerCase(),
+        paymentMethods: [],
+        status: 'active'
+      };
+
+      onUpdateEvent({
+        ...event,
+        members: [...event.members, newMember],
+      });
+
+      setNewMemberName('');
+      setNewMemberEmail('');
+      setShowAddMember(false);
     }
-
-    const newMember: Member = {
-      id: Math.random().toString(36).substring(2, 9),
-      name: newMemberName.trim(),
-      email: newMemberEmail.trim().toLowerCase(),
-      paymentMethods
-    };
-
-    onUpdateEvent({
-      ...event,
-      members: [...event.members, newMember],
-    });
-
-    setNewMemberName('');
-    setNewMemberEmail('');
-    setShowAddMember(false);
   };
 
   // 刪除成員 (若該成員有交易記錄則不允許刪除)
@@ -943,25 +990,29 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                 )}
 
                 <form onSubmit={handleAddMember}>
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontSize: '12px' }}>成員姓名/暱稱 *</label>
-                    <input
-                      type="text"
-                      className="input-field"
-                      placeholder="如：小華、Bob"
-                      value={newMemberName}
-                      onChange={(e) => setNewMemberName(e.target.value)}
-                      style={{ padding: '8px 12px', fontSize: '14px' }}
-                      required
-                    />
-                  </div>
+                  {!isSupabaseConfigured ? (
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontSize: '12px' }}>成員姓名/暱稱 *</label>
+                      <input
+                        type="text"
+                        className="input-field"
+                        placeholder="如：小華、Bob"
+                        value={newMemberName}
+                        onChange={(e) => setNewMemberName(e.target.value)}
+                        style={{ padding: '8px 12px', fontSize: '14px' }}
+                        required
+                      />
+                    </div>
+                  ) : null}
 
                   <div className="form-group" style={{ marginBottom: '16px' }}>
-                    <label className="form-label" style={{ fontSize: '12px' }}>電子信箱 *</label>
+                    <label className="form-label" style={{ fontSize: '12px' }}>
+                      {isSupabaseConfigured ? "受邀人的電子信箱或使用者 ID *" : "電子信箱 *"}
+                    </label>
                     <input
-                      type="email"
+                      type={isSupabaseConfigured ? "text" : "email"}
                       className="input-field"
-                      placeholder="example@email.com"
+                      placeholder={isSupabaseConfigured ? "例如: bob@test.com 或 user-uuid" : "example@email.com"}
                       value={newMemberEmail}
                       onChange={(e) => setNewMemberEmail(e.target.value)}
                       style={{ padding: '8px 12px', fontSize: '14px' }}
@@ -974,7 +1025,7 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                       取消
                     </button>
                     <button type="submit" className="btn btn-primary" style={{ padding: '6px 16px', fontSize: '13px' }}>
-                      加入成員
+                      {isSupabaseConfigured ? "發送邀請" : "加入成員"}
                     </button>
                   </div>
                 </form>
@@ -1005,6 +1056,11 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                         {isCurrentUser && (
                           <span className="badge badge-indigo" style={{ fontSize: '9px', padding: '1px 5px' }}>
                             您
+                          </span>
+                        )}
+                        {m.status === 'pending' && (
+                          <span className="badge badge-rose" style={{ fontSize: '9px', padding: '1px 5px', textTransform: 'none', background: 'rgba(244, 63, 94, 0.08)' }}>
+                            待接受邀請
                           </span>
                         )}
                       </div>

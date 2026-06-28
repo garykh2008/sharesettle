@@ -76,9 +76,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
         });        if (signUpError) throw signUpError;
 
         if (data.user) {
-          alert('註冊成功！如果您的 Supabase 專案有啟用信箱驗證，請至信箱點擊驗證信；若無，可直接於登入頁面登入。');
-          setMode('login');
-          setPassword('');
+          setError('註冊成功！正在為您自動登入並進入系統...');
         }
       } else {
         // 登入

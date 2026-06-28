@@ -3,15 +3,13 @@ export interface PaymentMethod {
   bankCode?: string;
   bankAccount?: string;
   lineId?: string;
-}
-
-export interface Member {
+}export interface Member {
   id: string;
   name: string;
   email: string;
   paymentMethods?: PaymentMethod[];
+  status?: 'active' | 'pending';
 }
-
 export type SplitType = 'equal' | 'selected_equal' | 'custom' | 'itemized';
 
 export interface ExpenseItem {

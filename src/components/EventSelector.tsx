@@ -12,6 +12,8 @@ interface EventSelectorProps {
   onLogout: () => void;
   onSaveUserPaymentMethods: (methods: PaymentMethod[]) => void;
   onDeleteEvent?: (eventId: string) => void;
+  onAcceptInvite?: (eventId: string) => void;
+  onDeclineInvite?: (eventId: string) => void;
 }
 
 export const EventSelector: React.FC<EventSelectorProps> = ({
@@ -23,6 +25,8 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
   onLogout,
   onSaveUserPaymentMethods,
   onDeleteEvent,
+  onAcceptInvite,
+  onDeclineInvite,
 }) => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [title, setTitle] = useState('');
@@ -39,6 +43,17 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
   useEffect(() => {
     setUserPaymentMethods(currentUser.paymentMethods || []);
   }, [currentUser]);
+
+  // 分類活動：已接受的活動 vs 待接受的邀請
+  const activeEvents = events.filter((evt) => {
+    const me = evt.members.find((m) => m.email.toLowerCase() === currentUser.email.toLowerCase());
+    return me && (me.status === 'active' || !me.status);
+  });
+
+  const pendingInvites = events.filter((evt) => {
+    const me = evt.members.find((m) => m.email.toLowerCase() === currentUser.email.toLowerCase());
+    return me && me.status === 'pending';
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -271,9 +286,54 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
             </form>
           </div>
 
+          {/* 📩 新的活動邀請區塊 */}
+          {isSupabaseConfigured && pendingInvites.length > 0 && (
+            <div style={{ marginBottom: '28px' }}>
+              <h2 style={{ fontSize: '16px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--color-primary-light)' }}>
+                📩 新的活動邀請 ({pendingInvites.length})
+              </h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {pendingInvites.map((evt) => (
+                  <div key={evt.id} className="card-glass" style={{ borderLeft: '4px solid var(--color-primary-light)', padding: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                      <div style={{ flex: 1 }}>
+                        <h3 style={{ fontSize: '16px', fontWeight: '600' }}>{evt.title}</h3>
+                        {evt.description && (
+                          <p style={{ color: 'var(--text-secondary)', fontSize: '12px', marginTop: '4px', lineClamp: 2, WebkitLineClamp: 2, display: '-webkit-box', WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                            {evt.description}
+                          </p>
+                        )}
+                        <div style={{ display: 'flex', gap: '12px', color: 'var(--text-muted)', fontSize: '11px', marginTop: '8px' }}>
+                          <span>👥 {evt.members.length} 位成員</span>
+                          <span>📅 {new Date(evt.createdAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          className="btn btn-primary"
+                          onClick={() => onAcceptInvite && onAcceptInvite(evt.id)}
+                          style={{ padding: '6px 12px', fontSize: '12px', height: '28px' }}
+                        >
+                          接受
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => onDeclineInvite && onDeclineInvite(evt.id)}
+                          style={{ padding: '6px 12px', fontSize: '12px', height: '28px', color: 'var(--color-danger)' }}
+                        >
+                          拒絕
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <h2 style={{ fontSize: '18px', marginBottom: '16px' }}>您的分帳活動</h2>
 
-          {events.length === 0 ? (
+          {activeEvents.length === 0 ? (
             <div className="card-glass" style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--text-secondary)' }}>
               <CreditCard size={48} style={{ margin: '0 auto 16px', opacity: 0.4, color: 'var(--color-primary-light)' }} />
               <p style={{ fontWeight: '500', marginBottom: '8px' }}>尚無分帳活動</p>
@@ -286,7 +346,7 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {events.map((evt) => (
+              {activeEvents.map((evt) => (
                 <div
                   key={evt.id}
                   className="card-glass"
