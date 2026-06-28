@@ -34,6 +34,9 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [expenseToEdit, setExpenseToEdit] = useState<Expense | null>(null);
 
+  // 收據放大預覽控制
+  const [previewReceiptUrl, setPreviewReceiptUrl] = useState<string | null>(null);
+
   // 展開/收合款項明細
   const [expandedExpenses, setExpandedExpenses] = useState<{ [id: string]: boolean }>({});
 
@@ -519,6 +522,12 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                                 小費
                               </span>
                             )}
+                            {/* 如果交易附有收據憑證 */}
+                            {exp.receiptUrl && (
+                              <span title="附有收據憑證" style={{ display: 'inline-flex', alignItems: 'center', fontSize: '13px', cursor: 'pointer' }}>
+                                🧾
+                              </span>
+                            )}
                           </h4>
                           <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
                             由 <strong>{paidByName}</strong> 支付 {expCurrencySym}{exp.amount.toFixed(2)} · {new Date(exp.date).toLocaleDateString()}
@@ -590,6 +599,34 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                               );
                             })}
                           </div>
+
+                          {/* 收據/憑證預覽 */}
+                          {exp.receiptUrl && (
+                            <div style={{ marginTop: '14px', padding: '10px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)' }}>
+                              <div style={{ color: 'var(--text-secondary)', marginBottom: '6px', fontWeight: '500' }}>收據/發票憑證：</div>
+                              <div 
+                                onClick={() => setPreviewReceiptUrl(exp.receiptUrl!)}
+                                style={{ 
+                                  position: 'relative', 
+                                  display: 'inline-block', 
+                                  cursor: 'pointer',
+                                  borderRadius: '6px',
+                                  overflow: 'hidden',
+                                  border: '1px solid rgba(255,255,255,0.1)',
+                                  lineHeight: 0
+                                }}
+                              >
+                                <img 
+                                  src={exp.receiptUrl} 
+                                  alt="收據憑證" 
+                                  style={{ maxHeight: '120px', maxWidth: '100%', objectFit: 'contain' }} 
+                                />
+                                <div style={{ position: 'absolute', bottom: '6px', right: '6px', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px', fontSize: '10px', color: 'white', lineHeight: 'normal' }}>
+                                  🔍 點擊放大
+                                </div>
+                              </div>
+                            </div>
+                          )}
                           
                           {/* 編輯與刪除按鈕 (結算中鎖定) */}
                           {(!event.settlements || event.settlements.length === 0) ? (
@@ -1144,7 +1181,65 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
         members={event.members}
         expenseToEdit={expenseToEdit}
         defaultCurrency={event.defaultCurrency}
+        eventId={event.id}
       />
+
+      {/* 收據大圖預覽燈箱 (Lightbox) */}
+      {previewReceiptUrl && (
+        <div 
+          onClick={() => setPreviewReceiptUrl(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            background: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            cursor: 'zoom-out',
+            padding: '20px',
+            boxSizing: 'border-box'
+          }}
+          className="animate-fade-in"
+        >
+          <div style={{ position: 'relative', maxWidth: '100%', maxHeight: '100%' }}>
+            <img 
+              src={previewReceiptUrl} 
+              alt="收據憑證大圖" 
+              style={{ 
+                maxWidth: '100%', 
+                maxHeight: '90vh', 
+                borderRadius: '8px', 
+                boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                objectFit: 'contain'
+              }} 
+            />
+            <button 
+              onClick={(e) => { e.stopPropagation(); setPreviewReceiptUrl(null); }}
+              style={{
+                position: 'absolute',
+                top: '-40px',
+                right: '0',
+                background: 'rgba(255,255,255,0.1)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                color: 'white',
+                padding: '6px 12px',
+                borderRadius: '6px',
+                fontSize: '13px',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              關閉
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Toast 訊息 */}
       {showToast && (

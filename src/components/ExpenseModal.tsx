@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Trash2, Plus } from 'lucide-react';
+import { X, Trash2, Plus, Upload } from 'lucide-react';
 import type { Member, Expense, SplitType, ExpenseSplit } from '../types';
 import { round, calculateTipSplits } from '../utils';
+import { supabase } from '../supabase';
 
 interface ExpenseModalProps {
   isOpen: boolean;
@@ -10,6 +11,7 @@ interface ExpenseModalProps {
   members: Member[];
   expenseToEdit?: Expense | null;
   defaultCurrency: 'USD' | 'TWD';
+  eventId: string;
 }
 
 export const ExpenseModal: React.FC<ExpenseModalProps> = ({
@@ -19,6 +21,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
   members,
   expenseToEdit,
   defaultCurrency,
+  eventId,
 }) => {
   const [title, setTitle] = useState('');
   const [amountStr, setAmountStr] = useState('');
@@ -35,10 +38,19 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
   // 自訂項目明細輸入
   const [itemInputs, setItemInputs] = useState<{ id: string; name: string; amountStr: string; memberIds: string[] }[]>([]);
 
+  // 收據上傳相關狀態
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptUrl, setReceiptUrl] = useState('');
+  const [localPreviewUrl, setLocalPreviewUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
+
   // 載入編輯資料或初始化
   useEffect(() => {
     if (expenseToEdit) {
       setTitle(expenseToEdit.title);
+      setReceiptUrl(expenseToEdit.receiptUrl || '');
+      setReceiptFile(null);
+      setLocalPreviewUrl('');
       setAmountStr(expenseToEdit.amount.toString());
       setPaidById(expenseToEdit.paidById);
       setCurrency(expenseToEdit.currency);
@@ -74,6 +86,9 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
     } else {
       // 新增模式
       setTitle('');
+      setReceiptUrl('');
+      setReceiptFile(null);
+      setLocalPreviewUrl('');
       setAmountStr('');
       setPaidById(members[0]?.id || '');
       setCurrency(defaultCurrency);
@@ -238,9 +253,39 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
     return { valid: true };
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const { valid } = validateForm();
     if (!valid) return;
+
+    let finalReceiptUrl = receiptUrl;
+    if (receiptFile) {
+      setUploading(true);
+      try {
+        const fileExt = receiptFile.name.split('.').pop();
+        const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+        const filePath = `${eventId}/${fileName}`;
+
+        const { error } = await supabase.storage
+          .from('receipts')
+          .upload(filePath, receiptFile);
+
+        if (error) throw error;
+
+        // 取得公開 URL
+        const { data: urlData } = supabase.storage
+          .from('receipts')
+          .getPublicUrl(filePath);
+        
+        finalReceiptUrl = urlData.publicUrl;
+      } catch (err: any) {
+        console.error('Failed to upload receipt:', err);
+        alert('上傳收據失敗，請重試！');
+        setUploading(false);
+        return;
+      } finally {
+        setUploading(false);
+      }
+    }
 
     // 彙整最終的 splits
     const finalSplits: ExpenseSplit[] = previewSplits.map((p) => {
@@ -264,6 +309,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
       date,
       splitType,
       splits: finalSplits,
+      receiptUrl: finalReceiptUrl,
       ...(splitType === 'itemized'
         ? {
             items: itemInputs.map((it) => ({
@@ -379,6 +425,91 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
               />
+            </div>
+          </div>
+
+          {/* 收據上傳欄位 */}
+          <div className="form-group" style={{ marginBottom: '16px' }}>
+            <label className="form-label">發票 / 收據憑證 (選填)</label>
+            <div 
+              style={{ 
+                border: '1px dashed var(--border-color)', 
+                borderRadius: '8px', 
+                padding: '12px', 
+                textAlign: 'center', 
+                background: 'rgba(255,255,255,0.02)',
+                position: 'relative'
+              }}
+            >
+              {localPreviewUrl || receiptUrl ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                  <img 
+                    src={localPreviewUrl || receiptUrl} 
+                    alt="收據預覽" 
+                    style={{ maxHeight: '120px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }} 
+                  />
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <label 
+                      className="btn btn-secondary" 
+                      style={{ padding: '4px 10px', fontSize: '11px', height: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                    >
+                      <Upload size={10} /> 更換圖片
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setReceiptFile(file);
+                            setLocalPreviewUrl(URL.createObjectURL(file));
+                          }
+                        }} 
+                        style={{ display: 'none' }} 
+                      />
+                    </label>
+                    <button 
+                      type="button" 
+                      className="btn btn-secondary" 
+                      onClick={() => {
+                        setReceiptFile(null);
+                        setReceiptUrl('');
+                        setLocalPreviewUrl('');
+                      }}
+                      style={{ padding: '4px 10px', fontSize: '11px', height: 'auto', color: 'var(--color-danger)' }}
+                    >
+                      移除
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <label 
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    gap: '6px', 
+                    cursor: 'pointer',
+                    padding: '8px 0',
+                    color: 'var(--text-secondary)',
+                    fontSize: '13px'
+                  }}
+                >
+                  <Upload size={20} style={{ color: 'var(--color-primary-light)' }} />
+                  <span>點擊上傳收據相片 (支援 JPG, PNG)</span>
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setReceiptFile(file);
+                        setLocalPreviewUrl(URL.createObjectURL(file));
+                      }
+                    }} 
+                    style={{ display: 'none' }} 
+                  />
+                </label>
+              )}
             </div>
           </div>
 
@@ -654,12 +785,12 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
             取消
           </button>
           <button
-            className={`btn btn-primary ${!formStatus.valid ? 'btn-disabled' : ''}`}
+            className={`btn btn-primary ${(!formStatus.valid || uploading) ? 'btn-disabled' : ''}`}
             onClick={handleSave}
             style={{ flex: 2 }}
-            disabled={!formStatus.valid}
+            disabled={!formStatus.valid || uploading}
           >
-            儲存項目
+            {uploading ? '上傳收據中...' : '儲存項目'}
           </button>
         </div>
       </div>
