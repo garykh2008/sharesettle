@@ -93,24 +93,37 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
       }
 
       const isEmail = inputVal.includes('@');
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const isUuid = uuidRegex.test(inputVal);
       
       try {
         let query = supabase.from('profiles').select('*');
-        if (isEmail) {
+        if (isUuid) {
+          query = query.eq('id', inputVal);
+        } else if (isEmail) {
           query = query.eq('email', inputVal.toLowerCase());
         } else {
-          query = query.eq('id', inputVal);
+          // 以信箱 @ 前綴搜尋 (例如: input 為 bob，則搜尋 bob@%)
+          query = query.like('email', `${inputVal.toLowerCase()}@%`);
         }
 
-        const { data: profile, error } = await query.maybeSingle();
+        const { data: profiles, error } = await query.limit(2);
 
         if (error) throw error;
 
-        if (!profile) {
-          alert('找不到該使用者！受邀人必須先註冊 ShareSettle 帳號，請確認 Email 或 ID 是否正確。');
+        if (!profiles || profiles.length === 0) {
+          alert('找不到該使用者！受邀人必須先註冊 ShareSettle 帳號，請確認 Email 或前綴 ID 是否正確。');
           setMemberError('找不到該使用者！受邀人必須先註冊帳號。');
           return;
         }
+
+        if (profiles.length > 1) {
+          alert('搜尋到多個符合該前綴的信箱，請輸入完整的 Email 進行邀請！');
+          setMemberError('符合前綴的帳號不唯一，請輸入完整 Email。');
+          return;
+        }
+
+        const profile = profiles[0];
 
         // 檢查是否重複
         const exists = event.members.some(
@@ -379,19 +392,19 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
       )}
 
       {/* 切換模擬帳號功能 (幫助使用者在本機切換視角測試) */}
-      <div className="card-glass" style={{ padding: '10px 14px', marginBottom: '16px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', fontSize: '13px', background: 'rgba(99, 102, 241, 0.05)' }}>
-        <span style={{ color: 'var(--text-secondary)' }}>當前模擬視角:</span>
-        {activeEventMember ? (
-          <span style={{ fontWeight: 'bold', color: 'var(--color-primary-light)' }}>
-            {activeEventMember.name} ({activeEventMember.email})
-          </span>
-        ) : (
-          <span style={{ color: 'var(--color-danger)' }}>
-            非活動成員 ({currentUser.email})
-          </span>
-        )}
-        
-        {!isSupabaseConfigured && (
+      {!isSupabaseConfigured && (
+        <div className="card-glass" style={{ padding: '10px 14px', marginBottom: '16px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', fontSize: '13px', background: 'rgba(99, 102, 241, 0.05)' }}>
+          <span style={{ color: 'var(--text-secondary)' }}>當前模擬視角:</span>
+          {activeEventMember ? (
+            <span style={{ fontWeight: 'bold', color: 'var(--color-primary-light)' }}>
+              {activeEventMember.name} ({activeEventMember.email})
+            </span>
+          ) : (
+            <span style={{ color: 'var(--color-danger)' }}>
+              非活動成員 ({currentUser.email})
+            </span>
+          )}
+          
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>模擬切換:</span>
             <select
@@ -413,8 +426,8 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
               ))}
             </select>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* 功能分頁選單 */}
       <div className="tabs-container" style={{ marginBottom: '16px' }}>
