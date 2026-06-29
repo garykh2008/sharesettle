@@ -153,7 +153,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
   }
 
   // 是否自動判定為小費分攤模式：當總金額大於基礎加總，且基礎加總大於 0
-  const isAutoTipMode = (splitType === 'custom' || splitType === 'itemized') && totalAmount > baseAmountsSum && baseAmountsSum > 0;
+  const isAutoTipMode = currency === 'USD' && (splitType === 'custom' || splitType === 'itemized') && totalAmount > baseAmountsSum && baseAmountsSum > 0;
   const calculatedTip = isAutoTipMode ? Math.max(0, totalAmount - baseAmountsSum) : 0;
 
   // 計算預覽分攤結果
@@ -239,12 +239,24 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
         if (it.memberIds.length === 0) return { valid: false, errorMsg: `項目「${it.name}」必須至少選擇一位成員平分！` };
       }
 
-      if (totalAmount < itemizedTotal) {
-        return { valid: false, errorMsg: `總金額 (${totalAmount.toFixed(2)}) 不可小於明細合計 (${itemizedTotal.toFixed(2)})！` };
+      if (currency !== 'USD') {
+        if (Math.abs(totalAmount - itemizedTotal) >= 0.005) {
+          return { valid: false, errorMsg: `總金額 (${totalAmount.toFixed(2)}) 必須與明細合計 (${itemizedTotal.toFixed(2)}) 完全一致！` };
+        }
+      } else {
+        if (totalAmount < itemizedTotal) {
+          return { valid: false, errorMsg: `總金額 (${totalAmount.toFixed(2)}) 不可小於明細合計 (${itemizedTotal.toFixed(2)})！` };
+        }
       }
     } else if (splitType === 'custom') {
-      if (totalAmount < customAmountsSum) {
-        return { valid: false, errorMsg: `總金額 (${totalAmount.toFixed(2)}) 不可小於自訂分攤合計 (${customAmountsSum.toFixed(2)})！` };
+      if (currency !== 'USD') {
+        if (Math.abs(totalAmount - customAmountsSum) >= 0.005) {
+          return { valid: false, errorMsg: `總金額 (${totalAmount.toFixed(2)}) 必須與自訂分攤合計 (${customAmountsSum.toFixed(2)}) 完全一致！` };
+        }
+      } else {
+        if (totalAmount < customAmountsSum) {
+          return { valid: false, errorMsg: `總金額 (${totalAmount.toFixed(2)}) 不可小於自訂分攤合計 (${customAmountsSum.toFixed(2)})！` };
+        }
       }
     } else if (splitType === 'selected_equal') {
       if (selectedMemberIds.length === 0) {
@@ -782,8 +794,14 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
             {/* 明細或自訂加總統計 (無小費時) */}
             {!isAutoTipMode && (splitType === 'custom' || splitType === 'itemized') && totalAmount > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px', fontSize: '12px', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.02)', padding: '8px', borderRadius: '6px' }}>
-                <span>類型: {splitType === 'custom' ? '自訂分攤' : '明細分攤'}</span>
-                <span style={{ fontWeight: 'bold', color: 'var(--color-primary-light)' }}>總計金額: {totalAmount.toFixed(2)}</span>
+                <span>分配合計: {baseAmountsSum.toFixed(2)}</span>
+                <span style={{ 
+                  fontWeight: 'bold', 
+                  color: Math.abs(totalAmount - baseAmountsSum) < 0.005 ? 'var(--color-secondary-light)' : 'var(--color-danger)' 
+                }}>
+                  {Math.abs(totalAmount - baseAmountsSum) < 0.005 ? '已完全平衡 ✓' : `尚差: ${(totalAmount - baseAmountsSum).toFixed(2)}`}
+                </span>
+                <span>總帳單: {totalAmount.toFixed(2)}</span>
               </div>
             )}
           </div>
