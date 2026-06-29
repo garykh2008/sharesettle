@@ -101,10 +101,9 @@ button, input, select, textarea {
   flex-direction: column;
   position: relative;
   box-shadow: 0 0 50px rgba(0, 0, 0, 0.8);
-  background-color: rgba(11, 15, 25, 0.85);
+  background-color: rgba(11, 15, 25, 0.9);
   border-left: 1px solid rgba(255, 255, 255, 0.03);
   border-right: 1px solid rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(10px);
 }
 
 @media (min-width: 768px) {
