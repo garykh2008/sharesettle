@@ -27,12 +27,14 @@ export interface ExpenseSplit {
   tipAmount?: number;  // 分配到的小費金額
 }
 
+export type Currency = 'USD' | 'TWD' | 'JPY';
+
 export interface Expense {
   id: string;
   title: string;
   amount: number;       // 總金額 (包含小費)
   paidById: string;     // 付款人 Member ID
-  currency: 'USD' | 'TWD';
+  currency: Currency;
   date: string;
   splitType: SplitType;
   splits: ExpenseSplit[];
@@ -44,7 +46,7 @@ export interface Expense {
 export interface SettlementRecord {
   fromId: string;
   toId: string;
-  amount: number; // 以事件 defaultCurrency 計
+  amount: number; // 以事件結算幣別計
   paid: boolean;
 }
 
@@ -52,8 +54,11 @@ export interface SplitEvent {
   id: string;
   title: string;
   description?: string;
-  defaultCurrency: 'USD' | 'TWD';
-  usdToTwdRate: number; // 匯率 (1 USD = X TWD)
+  defaultCurrency?: 'USD' | 'TWD'; // 相容舊版
+  usdToTwdRate?: number;            // 相容舊版
+  supportedCurrencies: Currency[];   // 此活動所支援的交易幣別
+  settlementCurrency: Currency;     // 此活動結算使用的幣別
+  exchangeRates: { [key in Currency]?: number }; // 各幣別對結算幣別的匯率 (1 該幣別 = X 結算幣別)
   members: Member[];
   expenses: Expense[];
   createdAt: string;

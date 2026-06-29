@@ -1,10 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Users, DollarSign, Calendar, LogOut, CreditCard, Trash2 } from 'lucide-react';
-import type { SplitEvent, UserSession, PaymentMethod } from '../types';
+import type { SplitEvent, UserSession, PaymentMethod, Currency } from '../types';
 
 interface EventSelectorProps {
   events: SplitEvent[];
-  onCreateEvent: (title: string, currency: 'USD' | 'TWD', rate: number, desc?: string) => void;
+  onCreateEvent: (
+    title: string,
+    supportedCurrencies: Currency[],
+    settlementCurrency: Currency,
+    exchangeRates: { [key in Currency]?: number },
+    desc?: string
+  ) => void;
   onSelectEvent: (eventId: string) => void;
   currentUser: UserSession;
   onLogout: () => void;
@@ -28,8 +34,37 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
-  const [currency, setCurrency] = useState<'USD' | 'TWD'>('TWD');
-  const [rate, setRate] = useState(32.0); // 預設 1 USD = 32 TWD
+  
+  // 多幣別與結算配置狀態
+  const [supportedCurrencies, setSupportedCurrencies] = useState<Currency[]>(['TWD']);
+  const [settlementCurrency, setSettlementCurrency] = useState<Currency>('TWD');
+  const [exchangeRates, setExchangeRates] = useState<{ [key in Currency]?: number }>({
+    TWD: 1.0,
+    USD: 32.5,
+    JPY: 0.22
+  });
+
+  const getDefaultRate = (c: Currency, target: Currency): number => {
+    if (c === target) return 1.0;
+    if (c === 'USD' && target === 'TWD') return 32.5;
+    if (c === 'TWD' && target === 'USD') return 0.031;
+    if (c === 'JPY' && target === 'TWD') return 0.22;
+    if (c === 'TWD' && target === 'JPY') return 4.54;
+    if (c === 'USD' && target === 'JPY') return 158.5;
+    if (c === 'JPY' && target === 'USD') return 0.0063;
+    return 1.0;
+  };
+
+  const handleSettlementCurrencyChange = (newTarget: Currency) => {
+    setSettlementCurrency(newTarget);
+    setExchangeRates((prev) => {
+      const updated = { ...prev };
+      (['TWD', 'USD', 'JPY'] as Currency[]).forEach((c) => {
+        updated[c] = getDefaultRate(c, newTarget);
+      });
+      return updated;
+    });
+  };
 
   const [showPaymentEditor, setShowPaymentEditor] = useState(false);
   const [userPaymentMethods, setUserPaymentMethods] = useState<PaymentMethod[]>(currentUser.paymentMethods || []);
@@ -52,11 +87,32 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
-    onCreateEvent(title.trim(), currency, rate, desc.trim() || undefined);
+    if (supportedCurrencies.length === 0) {
+      alert("請至少選取一個支援的交易幣別！");
+      return;
+    }
+
+    // 確保結算幣別必在支援交易幣別之中
+    const actualSupported = supportedCurrencies.includes(settlementCurrency)
+      ? supportedCurrencies
+      : [...supportedCurrencies, settlementCurrency];
+
+    onCreateEvent(
+      title.trim(),
+      actualSupported,
+      settlementCurrency,
+      exchangeRates,
+      desc.trim() || undefined
+    );
     setTitle('');
     setDesc('');
-    setCurrency('TWD');
-    setRate(32.0);
+    setSupportedCurrencies(['TWD']);
+    setSettlementCurrency('TWD');
+    setExchangeRates({
+      TWD: 1.0,
+      USD: 32.5,
+      JPY: 0.22
+    });
     setShowCreateForm(false);
   };
 
@@ -376,32 +432,81 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
               />
             </div>
 
+            {/* 交易幣別與結算配置 */}
+            <div className="form-group">
+              <label className="form-label">支援交易幣別 (複選)</label>
+              <div style={{ display: 'flex', gap: '20px', background: 'rgba(255,255,255,0.02)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '16px' }}>
+                {(['TWD', 'USD', 'JPY'] as Currency[]).map((c) => {
+                  const isChecked = supportedCurrencies.includes(c);
+                  return (
+                    <label key={c} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px' }}>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSupportedCurrencies([...supportedCurrencies, c]);
+                          } else {
+                            // 至少留一個，且不能移除當前的結算幣別
+                            if (supportedCurrencies.length > 1 && c !== settlementCurrency) {
+                              setSupportedCurrencies(supportedCurrencies.filter((curr) => curr !== c));
+                            }
+                          }
+                        }}
+                        style={{ width: '15px', height: '15px', cursor: 'pointer' }}
+                      />
+                      <span>{c}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">結算本位幣別</label>
                 <select
                   className="input-field select-field"
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value as 'USD' | 'TWD')}
+                  value={settlementCurrency}
+                  onChange={(e) => handleSettlementCurrencyChange(e.target.value as Currency)}
                 >
-                  <option value="TWD">新台幣 (TWD)</option>
-                  <option value="USD">美金 (USD)</option>
+                  {supportedCurrencies.map((c) => (
+                    <option key={c} value={c}>
+                      {c === 'TWD' ? '新台幣 (TWD)' : c === 'USD' ? '美金 (USD)' : '日圓 (JPY)'}
+                    </option>
+                  ))}
                 </select>
               </div>
 
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label">美元兌台幣匯率</label>
-                <input
-                  type="number"
-                  className="input-field"
-                  value={rate}
-                  step="0.01"
-                  onChange={(e) => setRate(parseFloat(e.target.value) || 0)}
-                  required
-                />
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
-                  1 USD = {rate} TWD
-                </span>
+                <label className="form-label">匯率設定</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {supportedCurrencies
+                    .filter((c) => c !== settlementCurrency)
+                    .map((c) => (
+                      <div key={c} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                        <span style={{ whiteSpace: 'nowrap' }}>1 {c} = </span>
+                        <input
+                          type="number"
+                          className="input-field"
+                          value={exchangeRates[c] || ''}
+                          step="0.0001"
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setExchangeRates((prev) => ({ ...prev, [c]: val }));
+                          }}
+                          style={{ width: '80px', padding: '4px 8px', height: '30px', fontSize: '13px' }}
+                          required
+                        />
+                        <span style={{ whiteSpace: 'nowrap' }}>{settlementCurrency}</span>
+                      </div>
+                    ))}
+                  {supportedCurrencies.filter((c) => c !== settlementCurrency).length === 0 && (
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)', paddingTop: '6px' }}>
+                      無須匯率轉換 (單一幣別活動)
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 

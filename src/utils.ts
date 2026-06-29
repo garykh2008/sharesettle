@@ -1,23 +1,39 @@
-import type { SplitEvent } from './types';
+import type { Currency, SplitEvent } from './types';
 
 // 四捨五入到小數點後兩位，避免浮點數誤差
 export function round(num: number): number {
   return Math.round((num + Number.EPSILON) * 100) / 100;
 }
 
-// 貨幣轉換
+// 貨幣轉換 (支援舊單一匯率與新匯率字典模式)
 export function convertCurrency(
   amount: number,
-  from: 'USD' | 'TWD',
-  to: 'USD' | 'TWD',
-  usdToTwdRate: number
+  from: Currency,
+  to: Currency,
+  exchangeRatesOrRate: number | { [key in Currency]?: number }
 ): number {
   if (from === to) return round(amount);
-  if (from === 'USD' && to === 'TWD') {
-    return round(amount * usdToTwdRate);
+
+  // 如果第四個參數是數字，代表是舊版的 usdToTwdRate
+  if (typeof exchangeRatesOrRate === 'number') {
+    const usdToTwdRate = exchangeRatesOrRate;
+    if (from === 'USD' && to === 'TWD') {
+      return round(amount * usdToTwdRate);
+    }
+    if (from === 'TWD' && to === 'USD') {
+      return round(amount / usdToTwdRate);
+    }
+    return round(amount);
   }
-  // TWD to USD
-  return round(amount / usdToTwdRate);
+
+  // 新版：以結算貨幣做橋樑轉換
+  // exchangeRates[C] 代表 1 單位 C 可以換多少單位的結算貨幣
+  const rates = exchangeRatesOrRate || {};
+  const fromRate = rates[from] || 1;
+  const toRate = rates[to] || 1;
+  
+  if (toRate === 0) return 0;
+  return round((amount * fromRate) / toRate);
 }
 
 // 計算包含比例小費的帳單分攤
@@ -95,12 +111,20 @@ export function calculateTipSplits(
 export interface SettlementTransaction {
   fromId: string;
   toId: string;
-  amount: number; // 以事件預設幣別計算
+  amount: number; // 以事件結算幣別計算
 }
 
 export function calculateSettlements(event: SplitEvent): SettlementTransaction[] {
-  const { members, expenses, defaultCurrency, usdToTwdRate } = event;
+  const { members, expenses, settlementCurrency, exchangeRates } = event;
   if (members.length <= 1) return [];
+
+  // 相容舊版
+  const baseCurrency = settlementCurrency || event.defaultCurrency || 'TWD';
+  const rates = exchangeRates || {
+    USD: baseCurrency === 'TWD' ? (event.usdToTwdRate || 32.5) : 1,
+    TWD: baseCurrency === 'USD' ? (1 / (event.usdToTwdRate || 32.5)) : 1,
+    JPY: 1,
+  };
 
   // 1. 初始化每位成員的收支平衡表 (Net Balance)
   const balances: { [memberId: string]: number } = {};
@@ -113,19 +137,19 @@ export function calculateSettlements(event: SplitEvent): SettlementTransaction[]
     const expCurrency = exp.currency;
     const paidBy = exp.paidById;
 
-    // 將整筆消費金額換算為事件預設幣別
-    const totalAmountInDefault = convertCurrency(exp.amount, expCurrency, defaultCurrency, usdToTwdRate);
+    // 將整筆消費金額換算為事件結算貨幣
+    const totalAmountInBase = convertCurrency(exp.amount, expCurrency, baseCurrency, rates);
 
     // 付款人增加餘額
     if (balances[paidBy] !== undefined) {
-      balances[paidBy] += totalAmountInDefault;
+      balances[paidBy] += totalAmountInBase;
     }
 
     // 分攤人減少餘額
     exp.splits.forEach((split) => {
-      const splitAmountInDefault = convertCurrency(split.amount, expCurrency, defaultCurrency, usdToTwdRate);
+      const splitAmountInBase = convertCurrency(split.amount, expCurrency, baseCurrency, rates);
       if (balances[split.memberId] !== undefined) {
-        balances[split.memberId] -= splitAmountInDefault;
+        balances[split.memberId] -= splitAmountInBase;
       }
     });
   });
@@ -181,4 +205,10 @@ export function calculateSettlements(event: SplitEvent): SettlementTransaction[]
   }
 
   return transactions;
+}
+
+export function getCurrencySymbol(c: Currency): string {
+  if (c === 'USD') return 'US$';
+  if (c === 'JPY') return '¥';
+  return 'NT$';
 }

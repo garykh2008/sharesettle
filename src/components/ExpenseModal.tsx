@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Trash2, Plus, Upload } from 'lucide-react';
-import type { Member, Expense, SplitType, ExpenseSplit } from '../types';
-import { round, calculateTipSplits } from '../utils';
+import type { Member, Expense, SplitType, ExpenseSplit, Currency } from '../types';
+import { round, calculateTipSplits, getCurrencySymbol } from '../utils';
 import { supabase } from '../supabase';
 
 interface ExpenseModalProps {
@@ -10,7 +10,8 @@ interface ExpenseModalProps {
   onSave: (expense: Omit<Expense, 'id'> & { id?: string }) => void;
   members: Member[];
   expenseToEdit?: Expense | null;
-  defaultCurrency: 'USD' | 'TWD';
+  supportedCurrencies: Currency[];
+  defaultCurrency: Currency;
   eventId: string;
 }
 
@@ -20,13 +21,14 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
   onSave,
   members,
   expenseToEdit,
+  supportedCurrencies,
   defaultCurrency,
   eventId,
 }) => {
   const [title, setTitle] = useState('');
   const [amountStr, setAmountStr] = useState('');
   const [paidById, setPaidById] = useState('');
-  const [currency, setCurrency] = useState<'USD' | 'TWD'>(defaultCurrency);
+  const [currency, setCurrency] = useState<Currency>(defaultCurrency);
   const [date, setDate] = useState(new Date().toISOString().substring(0, 10));
   
   const [splitType, setSplitType] = useState<SplitType>('equal');
@@ -398,10 +400,13 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
               <select
                 className="input-field select-field"
                 value={currency}
-                onChange={(e) => setCurrency(e.target.value as 'USD' | 'TWD')}
+                onChange={(e) => setCurrency(e.target.value as Currency)}
               >
-                <option value="TWD">TWD NT$</option>
-                <option value="USD">USD $</option>
+                {supportedCurrencies.map((c) => (
+                  <option key={c} value={c}>
+                    {c} {getCurrencySymbol(c)}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -717,7 +722,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>底:</span>
                           <span style={{ fontSize: '13px', fontWeight: '500' }}>
-                            {currency === 'USD' ? '$' : 'NT$'}{memberBaseShares[m.id].toFixed(2)}
+                            {getCurrencySymbol(currency)}{memberBaseShares[m.id].toFixed(2)}
                           </span>
                         </div>
                         {preview && preview.tipAmount !== undefined && preview.tipAmount > 0 && (
@@ -726,7 +731,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
                           </span>
                         )}
                         <span style={{ fontSize: '13px', fontWeight: 'bold' }}>
-                          共: {currency === 'USD' ? '$' : 'NT$'}{formattedPreview}
+                          共: {getCurrencySymbol(currency)}{formattedPreview}
                         </span>
                       </div>
                     ) : splitType === 'custom' && isAutoTipMode ? (
@@ -735,7 +740,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>底:</span>
                           <span style={{ fontSize: '13px', fontWeight: '500' }}>
-                            {currency === 'USD' ? '$' : 'NT$'}{(parseFloat(customAmounts[m.id]) || 0).toFixed(2)}
+                            {getCurrencySymbol(currency)}{(parseFloat(customAmounts[m.id]) || 0).toFixed(2)}
                           </span>
                         </div>
                         {preview && preview.tipAmount !== undefined && preview.tipAmount > 0 && (
@@ -744,13 +749,13 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
                           </span>
                         )}
                         <span style={{ fontSize: '13px', fontWeight: 'bold' }}>
-                          共: {currency === 'USD' ? '$' : 'NT$'}{formattedPreview}
+                          共: {getCurrencySymbol(currency)}{formattedPreview}
                         </span>
                       </div>
                     ) : splitType === 'custom' ? (
                       // 自訂模式：輸入分攤金額
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>{currency === 'USD' ? '$' : 'NT$'}</span>
+                        <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>{getCurrencySymbol(currency)}</span>
                         <input
                           type="text"
                           className="input-field"
@@ -763,12 +768,12 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
                     ) : splitType === 'itemized' ? (
                       // 明細分攤唯讀預覽 (無小費時)
                       <span style={{ fontSize: '15px', fontWeight: 'bold' }}>
-                        {currency === 'USD' ? '$' : 'NT$'}{memberBaseShares[m.id].toFixed(2)}
+                        {getCurrencySymbol(currency)}{memberBaseShares[m.id].toFixed(2)}
                       </span>
                     ) : (
                       // 平分/部分平分模式：唯讀顯示
                       <span style={{ fontSize: '15px', fontWeight: '500', color: (splitType === 'selected_equal' && !isSelected) ? 'var(--text-muted)' : 'var(--text-primary)' }}>
-                        {currency === 'USD' ? '$' : 'NT$'}{formattedPreview}
+                        {getCurrencySymbol(currency)}{formattedPreview}
                       </span>
                     )}
                   </div>

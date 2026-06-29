@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Users, DollarSign, Share2, Settings, Trash2, Edit2, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
-import type { SplitEvent, Member, Expense, UserSession } from '../types';
-import { calculateSettlements, convertCurrency, round } from '../utils';
+import type { SplitEvent, Member, Expense, UserSession, Currency } from '../types';
+import { calculateSettlements, convertCurrency, round, getCurrencySymbol } from '../utils';
 import { supabase } from '../supabase';
 import { ExpenseModal } from './ExpenseModal';
 
@@ -18,6 +18,13 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
   onUpdateEvent,
   currentUser,
 }) => {
+  const baseCurrency = event.settlementCurrency || event.defaultCurrency || 'TWD';
+  const rates = event.exchangeRates || {
+    USD: baseCurrency === 'TWD' ? (event.usdToTwdRate || 32.5) : 1,
+    TWD: baseCurrency === 'USD' ? (1 / (event.usdToTwdRate || 32.5)) : 1,
+    JPY: 1,
+  };
+
   const [activeTab, setActiveTab] = useState<'expenses' | 'settlement' | 'members'>('expenses');
   const [showSettings, setShowSettings] = useState(false);
   const [showAddMember, setShowAddMember] = useState(false);
@@ -25,10 +32,45 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [memberError, setMemberError] = useState('');
 
-  // 編輯活動基本設定
+  // 編輯活動基本設定 (支援多幣別與匯率字典)
   const [eventTitle, setEventTitle] = useState(event.title);
   const [eventDesc, setEventDesc] = useState(event.description || '');
-  const [eventRate, setEventRate] = useState(event.usdToTwdRate);
+  const [eventSupportedCurrencies, setEventSupportedCurrencies] = useState<Currency[]>(event.supportedCurrencies || ['TWD']);
+  const [eventSettlementCurrency, setEventSettlementCurrency] = useState<Currency>(event.settlementCurrency || event.defaultCurrency || 'TWD');
+  const [eventExchangeRates, setEventExchangeRates] = useState<{ [key in Currency]?: number }>(
+    event.exchangeRates || { TWD: 1, USD: event.usdToTwdRate || 32.5, JPY: 1 }
+  );
+
+  const getDashboardDefaultRate = (c: Currency, target: Currency): number => {
+    if (c === target) return 1.0;
+    if (c === 'USD' && target === 'TWD') return 32.5;
+    if (c === 'TWD' && target === 'USD') return 0.031;
+    if (c === 'JPY' && target === 'TWD') return 0.22;
+    if (c === 'TWD' && target === 'JPY') return 4.54;
+    if (c === 'USD' && target === 'JPY') return 158.5;
+    if (c === 'JPY' && target === 'USD') return 0.0063;
+    return 1.0;
+  };
+
+  const handleDashboardSettlementCurrencyChange = (newTarget: Currency) => {
+    setEventSettlementCurrency(newTarget);
+    setEventExchangeRates((prev) => {
+      const updated = { ...prev };
+      (['TWD', 'USD', 'JPY'] as Currency[]).forEach((c) => {
+        updated[c] = getDashboardDefaultRate(c, newTarget);
+      });
+      return updated;
+    });
+  };
+
+  // 當外部活動資料更新時，同步表單欄位
+  useEffect(() => {
+    setEventTitle(event.title);
+    setEventDesc(event.description || '');
+    setEventSupportedCurrencies(event.supportedCurrencies || ['TWD']);
+    setEventSettlementCurrency(event.settlementCurrency || event.defaultCurrency || 'TWD');
+    setEventExchangeRates(event.exchangeRates || { TWD: 1, USD: event.usdToTwdRate || 32.5, JPY: 1 });
+  }, [event]);
 
   // 記帳 Modal 控制
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -256,11 +298,24 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
   // 儲存活動設定變更
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
+    if (eventSupportedCurrencies.length === 0) {
+      alert("請至少選取一個支援的交易幣別！");
+      return;
+    }
+
+    const actualSupported = eventSupportedCurrencies.includes(eventSettlementCurrency)
+      ? eventSupportedCurrencies
+      : [...eventSupportedCurrencies, eventSettlementCurrency];
+
     onUpdateEvent({
       ...event,
       title: eventTitle.trim(),
       description: eventDesc.trim() || undefined,
-      usdToTwdRate: parseFloat(eventRate.toString()) || 32.0,
+      defaultCurrency: eventSettlementCurrency === 'JPY' ? 'TWD' : eventSettlementCurrency as any,
+      usdToTwdRate: eventExchangeRates['USD'] || 32.5,
+      supportedCurrencies: actualSupported,
+      settlementCurrency: eventSettlementCurrency,
+      exchangeRates: eventExchangeRates,
     });
     setShowSettings(false);
     setToastMsg('活動設定已更新！');
@@ -331,11 +386,11 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
     });
 
     event.expenses.forEach((exp) => {
-      const expInDefault = convertCurrency(exp.amount, exp.currency, event.defaultCurrency, event.usdToTwdRate);
+      const expInDefault = convertCurrency(exp.amount, exp.currency as Currency, baseCurrency, rates);
       balances[exp.paidById] += expInDefault;
 
       exp.splits.forEach((s) => {
-        const splitInDefault = convertCurrency(s.amount, exp.currency, event.defaultCurrency, event.usdToTwdRate);
+        const splitInDefault = convertCurrency(s.amount, exp.currency as Currency, baseCurrency, rates);
         balances[s.memberId] -= splitInDefault;
       });
     });
@@ -408,17 +463,82 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                 style={{ padding: '8px 12px', fontSize: '14px' }}
               />
             </div>
-            <div className="form-group" style={{ marginBottom: '16px' }}>
-              <label className="form-label" style={{ fontSize: '12px' }}>美元兌台幣匯率 (1 USD = ? TWD)</label>
-              <input
-                type="number"
-                className="input-field"
-                step="0.01"
-                value={eventRate}
-                onChange={(e) => setEventRate(parseFloat(e.target.value) || 0)}
-                style={{ padding: '8px 12px', fontSize: '14px' }}
-                required
-              />
+            {/* 交易幣別與結算配置 */}
+            <div className="form-group">
+              <label className="form-label" style={{ fontSize: '12px' }}>支援交易幣別 (複選)</label>
+              <div style={{ display: 'flex', gap: '20px', background: 'rgba(255,255,255,0.02)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '16px' }}>
+                {(['TWD', 'USD', 'JPY'] as Currency[]).map((c) => {
+                  const isChecked = eventSupportedCurrencies.includes(c);
+                  return (
+                    <label key={c} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px' }}>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setEventSupportedCurrencies([...eventSupportedCurrencies, c]);
+                          } else {
+                            if (eventSupportedCurrencies.length > 1 && c !== eventSettlementCurrency) {
+                              setEventSupportedCurrencies(eventSupportedCurrencies.filter((curr) => curr !== c));
+                            }
+                          }
+                        }}
+                        style={{ width: '15px', height: '15px', cursor: 'pointer' }}
+                      />
+                      <span>{c}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: '12px' }}>結算本位幣別</label>
+                <select
+                  className="input-field select-field"
+                  value={eventSettlementCurrency}
+                  onChange={(e) => handleDashboardSettlementCurrencyChange(e.target.value as Currency)}
+                  style={{ padding: '8px 12px', fontSize: '14px' }}
+                >
+                  {eventSupportedCurrencies.map((c) => (
+                    <option key={c} value={c}>
+                      {c === 'TWD' ? '新台幣 (TWD)' : c === 'USD' ? '美金 (USD)' : '日圓 (JPY)'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: '12px' }}>匯率設定</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {eventSupportedCurrencies
+                    .filter((c) => c !== eventSettlementCurrency)
+                    .map((c) => (
+                      <div key={c} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                        <span style={{ whiteSpace: 'nowrap' }}>1 {c} = </span>
+                        <input
+                          type="number"
+                          className="input-field"
+                          value={eventExchangeRates[c] || ''}
+                          step="0.0001"
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setEventExchangeRates((prev) => ({ ...prev, [c]: val }));
+                          }}
+                          style={{ width: '80px', padding: '4px 8px', height: '30px', fontSize: '13px' }}
+                          required
+                        />
+                        <span style={{ whiteSpace: 'nowrap' }}>{eventSettlementCurrency}</span>
+                      </div>
+                    ))}
+                  {eventSupportedCurrencies.filter((c) => c !== eventSettlementCurrency).length === 0 && (
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)', paddingTop: '6px' }}>
+                      無須匯率轉換 (單一幣別活動)
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button type="button" className="btn btn-secondary" onClick={() => setShowSettings(false)} style={{ padding: '6px 12px', fontSize: '13px' }}>
@@ -504,7 +624,7 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                 {event.expenses.map((exp) => {
                   const isExpanded = !!expandedExpenses[exp.id];
                   const paidByName = getMemberName(exp.paidById);
-                  const expCurrencySym = exp.currency === 'USD' ? '$' : 'NT$';
+                  const expCurrencySym = getCurrencySymbol(exp.currency as Currency);
 
                   // 判定當前模擬帳號在此筆款項中的分攤金額
                   const mySplit = exp.splits.find((s) => s.memberId === activeEventMember?.id);
@@ -538,6 +658,11 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                           <div style={{ fontSize: '16px', fontWeight: 'bold' }}>
                             {expCurrencySym}{exp.amount.toFixed(2)}
                           </div>
+                          {exp.currency !== baseCurrency && (
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                              折合 {getCurrencySymbol(baseCurrency)}{(exp.amount * (rates[exp.currency] || 1)).toFixed(2)}
+                            </div>
+                          )}
                           
                           {/* 針對當前使用者的個人化提示 */}
                           {activeEventMember && (
@@ -686,13 +811,14 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
             {/* 1. 成員收支總覽 (本位幣) */}
             <div className="card-glass" style={{ padding: '16px' }}>
               <h3 style={{ fontSize: '16px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Users size={16} className="title-gradient" /> 成員收支狀態 ({event.defaultCurrency})
+                <Users size={16} className="title-gradient" /> 成員收支狀態 ({event.settlementCurrency || event.defaultCurrency || 'TWD'})
               </h3>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {memberBalances.map((mb) => {
                   const isPositive = mb.net > 0;
                   const isZero = Math.abs(mb.net) <= 0.005;
+                  const baseCurrency = event.settlementCurrency || event.defaultCurrency || 'TWD';
 
                   return (
                     <div key={mb.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
@@ -704,7 +830,7 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                         fontWeight: 'bold',
                         color: isZero ? 'var(--text-muted)' : (isPositive ? 'var(--color-secondary-light)' : 'var(--color-danger)')
                       }}>
-                        {isZero ? '已結清' : (isPositive ? `應收 +${mb.net.toFixed(2)}` : `應付 ${mb.net.toFixed(2)}`)}
+                        {isZero ? '已結清' : (isPositive ? `應收 +${getCurrencySymbol(baseCurrency)}${mb.net.toFixed(2)}` : `應付 ${getCurrencySymbol(baseCurrency)}${Math.abs(mb.net).toFixed(2)}`)}
                       </span>
                     </div>
                   );
@@ -786,11 +912,17 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                   {event.settlements.map((tx, idx) => {
                     const fromName = getMemberName(tx.fromId);
                     const toName = getMemberName(tx.toId);
-                    const currencySym = event.defaultCurrency === 'USD' ? '$' : 'NT$';
+                    const baseCurrency = event.settlementCurrency || event.defaultCurrency || 'TWD';
+                    const rates = event.exchangeRates || {
+                      USD: baseCurrency === 'TWD' ? (event.usdToTwdRate || 32.5) : 1,
+                      TWD: baseCurrency === 'USD' ? (1 / (event.usdToTwdRate || 32.5)) : 1,
+                      JPY: 1,
+                    };
+                    const currencySym = getCurrencySymbol(baseCurrency);
 
-                    const altCurrency = event.defaultCurrency === 'TWD' ? 'USD' : 'TWD';
-                    const altAmount = convertCurrency(tx.amount, event.defaultCurrency, altCurrency, event.usdToTwdRate);
-                    const altCurrencySym = altCurrency === 'USD' ? '$' : 'NT$';
+                    const altCurrency = (event.supportedCurrencies || []).find(c => c !== baseCurrency) || (baseCurrency === 'TWD' ? 'USD' : 'TWD');
+                    const altAmount = convertCurrency(tx.amount, baseCurrency, altCurrency, rates);
+                    const altCurrencySym = getCurrencySymbol(altCurrency);
 
                     const isPayer = tx.fromId === activeEventMember?.id;
                     const isReceiver = tx.toId === activeEventMember?.id;
@@ -904,12 +1036,17 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                         {settlements.map((tx, idx) => {
                           const fromName = getMemberName(tx.fromId);
                           const toName = getMemberName(tx.toId);
-                          const currencySym = event.defaultCurrency === 'USD' ? '$' : 'NT$';
+                          const baseCurrency = event.settlementCurrency || event.defaultCurrency || 'TWD';
+                          const rates = event.exchangeRates || {
+                            USD: baseCurrency === 'TWD' ? (event.usdToTwdRate || 32.5) : 1,
+                            TWD: baseCurrency === 'USD' ? (1 / (event.usdToTwdRate || 32.5)) : 1,
+                            JPY: 1,
+                          };
+                          const currencySym = getCurrencySymbol(baseCurrency);
 
-                          // 備用幣別換算
-                          const altCurrency = event.defaultCurrency === 'TWD' ? 'USD' : 'TWD';
-                          const altAmount = convertCurrency(tx.amount, event.defaultCurrency, altCurrency, event.usdToTwdRate);
-                          const altCurrencySym = altCurrency === 'USD' ? '$' : 'NT$';
+                          const altCurrency = (event.supportedCurrencies || []).find(c => c !== baseCurrency) || (baseCurrency === 'TWD' ? 'USD' : 'TWD');
+                          const altAmount = convertCurrency(tx.amount, baseCurrency, altCurrency, rates);
+                          const altCurrencySym = getCurrencySymbol(altCurrency);
 
                           const receiver = event.members.find(m => m.id === tx.toId);
                           const receiverMethods = receiver?.paymentMethods || [];
@@ -1188,7 +1325,8 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
         onSave={handleSaveExpense}
         members={event.members}
         expenseToEdit={expenseToEdit}
-        defaultCurrency={event.defaultCurrency}
+        supportedCurrencies={event.supportedCurrencies}
+        defaultCurrency={event.settlementCurrency || event.defaultCurrency || 'TWD'}
         eventId={event.id}
       />
 

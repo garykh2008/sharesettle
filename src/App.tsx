@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { LoginScreen } from './components/LoginScreen';
 import { EventSelector } from './components/EventSelector';
 import { EventDashboard } from './components/EventDashboard';
-import type { SplitEvent, UserSession, Member, PaymentMethod, Expense } from './types';
+import type { SplitEvent, UserSession, Member, PaymentMethod, Expense, Currency } from './types';
 import { ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { supabase } from './supabase';
 
@@ -136,6 +136,9 @@ function App() {
             description: d.description,
             defaultCurrency: d.default_currency as 'USD' | 'TWD',
             usdToTwdRate: Number(d.usd_to_twd_rate),
+            supportedCurrencies: (d.supported_currencies || ['TWD']) as Currency[],
+            settlementCurrency: (d.settlement_currency || d.default_currency || 'TWD') as Currency,
+            exchangeRates: (d.exchange_rates || { TWD: 1, USD: Number(d.usd_to_twd_rate || 32.5) }) as { [key in Currency]?: number },
             status: d.status as 'active' | 'settled',
             members: d.members as Member[],
             expenses: d.expenses as Expense[],
@@ -202,6 +205,9 @@ function App() {
             description: joinedEventData.description,
             defaultCurrency: joinedEventData.default_currency as 'USD' | 'TWD',
             usdToTwdRate: Number(joinedEventData.usd_to_twd_rate),
+            supportedCurrencies: (joinedEventData.supported_currencies || ['TWD']) as Currency[],
+            settlementCurrency: (joinedEventData.settlement_currency || joinedEventData.default_currency || 'TWD') as Currency,
+            exchangeRates: (joinedEventData.exchange_rates || { TWD: 1, USD: Number(joinedEventData.usd_to_twd_rate || 32.5) }) as { [key in Currency]?: number },
             status: joinedEventData.status as 'active' | 'settled',
             members: joinedEventData.members as Member[],
             expenses: joinedEventData.expenses as Expense[],
@@ -252,7 +258,13 @@ function App() {
   };
 
   // 建立新活動
-  const handleCreateEvent = async (title: string, currency: 'USD' | 'TWD', rate: number, desc?: string) => {
+  const handleCreateEvent = async (
+    title: string,
+    supportedCurrencies: Currency[],
+    settlementCurrency: Currency,
+    exchangeRates: { [key in Currency]?: number },
+    desc?: string
+  ) => {
     if (!currentUser) return;
 
     const newMember: Member = {
@@ -266,8 +278,12 @@ function App() {
       id: Math.random().toString(36).substring(2, 9),
       title,
       description: desc,
-      defaultCurrency: currency,
-      usdToTwdRate: rate,
+      // 舊版降級相容欄位
+      defaultCurrency: settlementCurrency === 'JPY' ? 'TWD' : settlementCurrency as any,
+      usdToTwdRate: exchangeRates['USD'] || 32.5,
+      supportedCurrencies,
+      settlementCurrency,
+      exchangeRates,
       members: [newMember],
       expenses: [],
       createdAt: new Date().toISOString(),
@@ -281,6 +297,9 @@ function App() {
         description: newEvent.description,
         default_currency: newEvent.defaultCurrency,
         usd_to_twd_rate: newEvent.usdToTwdRate,
+        supported_currencies: newEvent.supportedCurrencies,
+        settlement_currency: newEvent.settlementCurrency,
+        exchange_rates: newEvent.exchangeRates,
         status: newEvent.status || 'active',
         members: newEvent.members,
         expenses: newEvent.expenses,
@@ -315,6 +334,9 @@ function App() {
         description: updatedEvent.description,
         default_currency: updatedEvent.defaultCurrency,
         usd_to_twd_rate: updatedEvent.usdToTwdRate,
+        supported_currencies: updatedEvent.supportedCurrencies,
+        settlement_currency: updatedEvent.settlementCurrency,
+        exchange_rates: updatedEvent.exchangeRates,
         status: updatedEvent.status,
         members: updatedEvent.members,
         expenses: updatedEvent.expenses,
