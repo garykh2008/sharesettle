@@ -241,6 +241,8 @@ function App() {
             if (oldEvent) {
               const newExpenses = (newRaw.expenses || []) as Expense[];
               const oldExpenses = oldEvent.expenses || [];
+              const newSettlements = (newRaw.settlements || []) as any[];
+              const oldSettlements = (oldEvent.settlements || []) as any[];
               const newStatus = newRaw.status;
               const oldStatus = oldEvent.status;
 
@@ -295,26 +297,74 @@ function App() {
                 }
               }
 
-              // 3. 結算狀態改變比對 (鎖定與重啟)
-              if (newStatus !== oldStatus) {
-                let title = '';
-                let body = '';
-
-                if (newStatus === 'settled') {
-                  title = `活動「${newRaw.title}」已鎖定結算！`;
-                  body = `所有帳目已被鎖定，請前往「結算分析」查看收款人資訊並進行匯款。`;
-                } else if ((newStatus === 'active' || !newStatus) && oldStatus === 'settled') {
-                  title = `活動「${newRaw.title}」已取消結算並解鎖`;
-                  body = `帳目已重新開放編輯，您可以繼續記帳或調整明細。`;
-                }
-
-                if (title && body) {
+              // 3. 刪除記帳比對
+              if (newExpenses.length < oldExpenses.length) {
+                const deletedExpense = oldExpenses.find(
+                  oldExp => !newExpenses.some(newExp => newExp.id === oldExp.id)
+                );
+ 
+                if (deletedExpense) {
+                  const title = `活動「${newRaw.title}」有帳目刪除`;
+                  const body = `「${deletedExpense.title}」已被刪除，原金額：${getCurrencySymbol(deletedExpense.currency as Currency)}${deletedExpense.amount.toFixed(2)}`;
+ 
                   sendSystemNotification(title, body);
-
-                  setToastMsg(`🔔 ${title}`);
+ 
+                  setToastMsg(`🔔 ${title}：${body}`);
                   setShowToast(true);
                   setTimeout(() => setShowToast(false), 5000);
                 }
+              }
+ 
+              // 4. 結算流程狀態與對象比對
+              let statusTitle = '';
+              let statusBody = '';
+ 
+              // 4A. 開始結算 (鎖定帳目)
+              if (oldSettlements.length === 0 && newSettlements.length > 0) {
+                statusTitle = `活動「${newRaw.title}」已開始結算！`;
+                statusBody = `帳目已被鎖定，系統已規劃最少轉帳方案，請前往查看。`;
+              }
+              // 4B. 取消結算 (解鎖帳目)
+              else if (oldSettlements.length > 0 && newSettlements.length === 0 && newStatus !== 'settled') {
+                statusTitle = `活動「${newRaw.title}」已取消結算並解鎖`;
+                statusBody = `帳目已重新開放編輯，您可以繼續記帳。`;
+              }
+              // 4C. 完全結清 (歸檔)
+              else if (newStatus === 'settled' && oldStatus !== 'settled') {
+                statusTitle = `活動「${newRaw.title}」已完全結清！`;
+                statusBody = `所有成員皆已完成匯款收付款，活動已正式歸檔。`;
+              }
+              // 4D. 重啟活動 (解除歸檔)
+              else if ((newStatus === 'active' || !newStatus) && oldStatus === 'settled') {
+                statusTitle = `活動「${newRaw.title}」已重啟解鎖`;
+                statusBody = `活動已重新開啟，您可以調整帳目或重新結算。`;
+              }
+ 
+              if (statusTitle && statusBody) {
+                sendSystemNotification(statusTitle, statusBody);
+                setToastMsg(`🔔 ${statusTitle}`);
+                setShowToast(true);
+                setTimeout(() => setShowToast(false), 5000);
+              }
+ 
+              // 5. 確認付款比對
+              const newlyPaid = newSettlements.find(newSet => {
+                const oldSet = oldSettlements.find(
+                  o => o.fromId === newSet.fromId && o.toId === newSet.toId
+                );
+                return oldSet && !oldSet.paid && newSet.paid;
+              });
+ 
+              if (newlyPaid) {
+                const fromName = oldEvent.members.find(m => m.id === newlyPaid.fromId)?.name || '有人';
+                const toName = oldEvent.members.find(m => m.id === newlyPaid.toId)?.name || '有人';
+                const title = `活動「${newRaw.title}」有付款確認`;
+                const body = `${fromName} 已確認向 ${toName} 支付了 ${getCurrencySymbol(oldEvent.settlementCurrency as Currency || oldEvent.defaultCurrency as Currency || 'TWD')}${newlyPaid.amount.toFixed(2)}`;
+ 
+                sendSystemNotification(title, body);
+                setToastMsg(`🔔 ${title}：${body}`);
+                setShowToast(true);
+                setTimeout(() => setShowToast(false), 5000);
               }
             }
           }
