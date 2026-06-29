@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Users, DollarSign, Calendar, LogOut, CreditCard, Trash2, HelpCircle, Bell, User } from 'lucide-react';
+import { Plus, Users, DollarSign, Calendar, LogOut, CreditCard, Trash2, HelpCircle, Bell, User, Settings } from 'lucide-react';
 import type { SplitEvent, UserSession, PaymentMethod, Currency } from '../types';
 import { HelpModal } from './HelpModal';
 
@@ -38,6 +38,7 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
   const [previewAvatarUrl, setPreviewAvatarUrl] = useState<string | null>(null);
+  const [showMenu, setShowMenu] = useState(false);
   
   // 多幣別與結算配置狀態
   const [supportedCurrencies, setSupportedCurrencies] = useState<Currency[]>(['TWD']);
@@ -181,36 +182,110 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
               <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>{currentUser.email}</div>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto', alignItems: 'center', flexShrink: 0 }}>
+            {/* 通知開關圖示按鈕 */}
             <button
-              className={`btn ${notificationPermission === 'granted' ? 'btn-secondary' : 'btn-primary'}`}
               onClick={requestNotificationPermission}
+              title={notificationPermission === 'granted' ? '通知已啟用' : '啟用通知'}
               style={{
-                padding: '8px 12px',
-                fontSize: '13px',
+                width: '38px',
+                height: '38px',
+                borderRadius: '50%',
+                border: '1px solid rgba(255,255,255,0.1)',
+                background: notificationPermission === 'granted' ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.05)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
-                background: notificationPermission === 'granted' ? 'rgba(255, 255, 255, 0.05)' : undefined,
-                border: notificationPermission === 'granted' ? '1px solid rgba(255, 255, 255, 0.1)' : undefined
+                justifyContent: 'center',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                flexShrink: 0
               }}
-              title={notificationPermission === 'granted' ? '通知已啟用' : '啟用通知'}
             >
-              <Bell size={14} style={{ color: notificationPermission === 'granted' ? '#10b981' : undefined }} />
-              {notificationPermission === 'granted' ? '通知已啟用 🟢' : '啟用通知'}
+              <Bell size={16} style={{ color: notificationPermission === 'granted' ? '#10b981' : 'var(--text-secondary)' }} />
             </button>
-            <button className="btn btn-secondary" onClick={onShowProfileModal} style={{ padding: '8px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <User size={14} /> 個人資料
-            </button>
-            <button className="btn btn-secondary" onClick={() => setShowHelp(true)} style={{ padding: '8px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <HelpCircle size={14} /> 使用說明
-            </button>
-            <button className="btn btn-secondary" onClick={() => setShowPaymentEditor(!showPaymentEditor)} style={{ padding: '8px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <CreditCard size={14} /> 收款設定
-            </button>
-            <button className="btn btn-secondary" onClick={onLogout} style={{ padding: '8px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <LogOut size={14} /> 登出
-            </button>
+
+            {/* 設定齒輪 + 下拉選單 */}
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowMenu(v => !v)}
+                title="更多選項"
+                style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '50%',
+                  border: `1px solid ${showMenu ? 'rgba(139,92,246,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                  background: showMenu ? 'rgba(139,92,246,0.15)' : 'rgba(255,255,255,0.05)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  flexShrink: 0
+                }}
+              >
+                <Settings size={16} style={{ color: showMenu ? 'var(--color-primary)' : 'var(--text-secondary)', transition: 'transform 0.3s', transform: showMenu ? 'rotate(90deg)' : 'rotate(0deg)' }} />
+              </button>
+
+              {/* 下拉浮動選單 */}
+              {showMenu && (
+                <>
+                  {/* 點擊遮罩收合選單 */}
+                  <div
+                    onClick={() => setShowMenu(false)}
+                    style={{ position: 'fixed', inset: 0, zIndex: 998 }}
+                  />
+                  <div
+                    className="animate-fade-in"
+                    style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 8px)',
+                      right: 0,
+                      minWidth: '160px',
+                      background: 'var(--bg-card)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      borderRadius: '12px',
+                      boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                      backdropFilter: 'blur(16px)',
+                      zIndex: 999,
+                      overflow: 'hidden',
+                      padding: '4px'
+                    }}
+                  >
+                    {[
+                      { icon: <User size={14} />, label: '個人資料', onClick: () => { onShowProfileModal(); setShowMenu(false); } },
+                      { icon: <CreditCard size={14} />, label: '收款設定', onClick: () => { setShowPaymentEditor(v => !v); setShowMenu(false); } },
+                      { icon: <HelpCircle size={14} />, label: '使用說明', onClick: () => { setShowHelp(true); setShowMenu(false); } },
+                      { icon: <LogOut size={14} />, label: '登出', onClick: () => { onLogout(); setShowMenu(false); }, danger: true },
+                    ].map((item, idx) => (
+                      <button
+                        key={idx}
+                        onClick={item.onClick}
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          padding: '10px 14px',
+                          background: 'transparent',
+                          border: 'none',
+                          color: (item as { danger?: boolean }).danger ? '#f87171' : 'var(--text-primary)',
+                          fontSize: '14px',
+                          cursor: 'pointer',
+                          borderRadius: '8px',
+                          textAlign: 'left',
+                          transition: 'background 0.15s'
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        {item.icon}
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
