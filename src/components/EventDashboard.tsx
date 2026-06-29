@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Users, DollarSign, Share2, Settings, Trash2, Edit2, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, Plus, Users, DollarSign, Share2, Settings, Trash2, Edit2, CheckCircle2, ChevronDown, ChevronUp, HelpCircle, Search, Download } from 'lucide-react';
 import type { SplitEvent, Member, Expense, UserSession, Currency } from '../types';
 import { calculateSettlements, convertCurrency, round, getCurrencySymbol } from '../utils';
 import { supabase } from '../supabase';
 import { ExpenseModal } from './ExpenseModal';
+import { HelpModal } from './HelpModal';
 
 interface EventDashboardProps {
   event: SplitEvent;
@@ -75,6 +76,11 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
   // 記帳 Modal 控制
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [expenseToEdit, setExpenseToEdit] = useState<Expense | null>(null);
+
+  // 通用升級狀態 (說明引導、搜尋與篩選)
+  const [showHelp, setShowHelp] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterMemberId, setFilterMemberId] = useState('');
 
   // 收據放大預覽控制
   const [previewReceiptUrl, setPreviewReceiptUrl] = useState<string | null>(null);
@@ -323,6 +329,56 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
     setTimeout(() => setShowToast(false), 2000);
   };
 
+  // 匯出帳目明細至 CSV (相容 Excel UTF-8 BOM 格式，避免中文與日元亂碼)
+  const handleExportCSV = () => {
+    if (event.expenses.length === 0) {
+      alert("目前尚無記帳項目，無法匯出！");
+      return;
+    }
+
+    // 建立 CSV 表頭
+    const headers = ["日期", "消費項目", "付款人", "金額", "幣別", `折合結算本位幣 (${baseCurrency})`, "分攤成員與金額"];
+    
+    const rows = event.expenses.map((exp) => {
+      const paidByName = getMemberName(exp.paidById);
+      const convertedVal = (exp.amount * (rates[exp.currency as Currency] || 1)).toFixed(2);
+      
+      const splitDetails = exp.splits.map((s) => {
+        const name = getMemberName(s.memberId);
+        return `${name}: ${getCurrencySymbol(exp.currency as Currency)}${s.amount.toFixed(2)}`;
+      }).join(" | ");
+
+      return [
+        new Date(exp.date).toLocaleDateString(),
+        exp.title,
+        paidByName,
+        exp.amount.toFixed(2),
+        exp.currency,
+        convertedVal,
+        splitDetails
+      ];
+    });
+
+    // 結合表頭與資料行 (用逗號隔開，並將內容用引號包裹防 csv 跑版)
+    const csvContent = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+
+    // 加入 UTF-8 BOM 避免 Excel 亂碼
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `ShareSettle_${event.title.replace(/[\/\\?%*:|"<>]/g, '_')}_帳目明細.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    setToastMsg('CSV 報表已成功下載！');
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 2000);
+  };
+
   // 新增或更新交易
   const handleSaveExpense = (expenseData: Omit<Expense, 'id'> & { id?: string }) => {
     let updatedExpenses = [...event.expenses];
@@ -404,6 +460,19 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
 
   const memberBalances = getMemberBalances();
 
+  // 取得篩選過後的記帳歷史項目
+  const filteredExpenses = event.expenses.filter((exp) => {
+    const matchesQuery = 
+      exp.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      getMemberName(exp.paidById).toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesMember = !filterMemberId || 
+      exp.paidById === filterMemberId || 
+      exp.splits.some((s) => s.memberId === filterMemberId);
+
+    return matchesQuery && matchesMember;
+  });
+
   // 判定當前模擬使用者在 event 中所對應的 Member 物件
   const activeEventMember = event.members.find(
     (m) => m.email.toLowerCase() === currentUser.email.toLowerCase()
@@ -431,6 +500,9 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
         </div>
         <button className="btn btn-secondary btn-icon" onClick={handleShare} style={{ width: '36px', height: '36px' }} title="分享此活動">
           <Share2 size={16} />
+        </button>
+        <button className="btn btn-secondary btn-icon" onClick={() => setShowHelp(true)} style={{ width: '36px', height: '36px' }} title="使用說明">
+          <HelpCircle size={16} />
         </button>
         <button className="btn btn-secondary btn-icon" onClick={() => setShowSettings(!showSettings)} style={{ width: '36px', height: '36px' }} title="活動設定">
           <Settings size={16} />
@@ -611,6 +683,45 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
               </div>
             )}
 
+            {event.expenses.length > 0 && (
+              <div className="card-glass animate-fade-in" style={{ display: 'flex', gap: '10px', padding: '10px 14px', marginBottom: '10px', alignItems: 'center', flexWrap: 'wrap', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                {/* 搜尋輸入框 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: '2 1 200px', background: 'rgba(0,0,0,0.2)', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <Search size={14} style={{ color: 'var(--text-muted)' }} />
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder="搜尋項目名稱或付款人..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    style={{ border: 'none', background: 'none', padding: 0, fontSize: '13px', margin: 0, height: 'auto', width: '100%', outline: 'none', color: 'var(--text-primary)' }}
+                  />
+                  {searchQuery && (
+                    <button onClick={() => setSearchQuery('')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '11px', cursor: 'pointer', padding: '0 4px', outline: 'none' }}>
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* 成員篩選下拉選單 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: '1 1 120px' }}>
+                  <select
+                    className="input-field select-field"
+                    value={filterMemberId}
+                    onChange={(e) => setFilterMemberId(e.target.value)}
+                    style={{ padding: '6px 10px', fontSize: '13px', height: '32px', margin: 0 }}
+                  >
+                    <option value="">所有分攤成員</option>
+                    {event.members.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} 參與的
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
             {event.expenses.length === 0 ? (
               <div className="card-glass" style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary)', marginTop: '10px' }}>
                 <DollarSign size={40} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
@@ -619,9 +730,23 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                   請點擊右上角「記一筆」新增第一筆消費！
                 </p>
               </div>
+            ) : filteredExpenses.length === 0 ? (
+              <div className="card-glass animate-fade-in" style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary)', marginTop: '10px' }}>
+                <p style={{ fontSize: '14px', fontWeight: '500' }}>🔍 找不到符合條件的記帳項目</p>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  請嘗試修改您的關鍵字或選擇其他成員篩選。
+                </p>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => { setSearchQuery(''); setFilterMemberId(''); }}
+                  style={{ marginTop: '14px', padding: '6px 16px', fontSize: '12.5px' }}
+                >
+                  清除所有條件
+                </button>
+              </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
-                {event.expenses.map((exp) => {
+                {filteredExpenses.map((exp) => {
                   const isExpanded = !!expandedExpenses[exp.id];
                   const paidByName = getMemberName(exp.paidById);
                   const expCurrencySym = getCurrencySymbol(exp.currency as Currency);
@@ -896,11 +1021,22 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
 
             {/* 2. 建議收付款方案 / 結算進度追蹤 */}
             <div className="card-glass" style={{ padding: '16px' }}>
-              <h3 style={{ fontSize: '16px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <CheckCircle2 size={16} className="title-gradient" /> 
-                {event.settlements && event.settlements.length > 0 ? '結算支付進度追蹤' : '建議收付款方案'}
-              </h3>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '6px' }}>
+                <h3 style={{ fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                  <CheckCircle2 size={16} className="title-gradient" /> 
+                  {event.settlements && event.settlements.length > 0 ? '結算支付進度追蹤' : '建議收付款方案'}
+                </h3>
+                {event.expenses.length > 0 && (
+                  <button 
+                    className="btn btn-secondary" 
+                    onClick={handleExportCSV}
+                    style={{ padding: '4px 10px', fontSize: '11px', height: '24px', display: 'flex', alignItems: 'center', gap: '4px', margin: 0 }}
+                  >
+                    <Download size={11} /> 匯出 CSV 報表
+                  </button>
+                )}
+              </div>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px', marginTop: '4px' }}>
                 {event.settlements && event.settlements.length > 0 
                   ? '請點選「確認支付」以更新轉帳記錄。付款按鈕僅在您切換至該付款人視角時顯示。' 
                   : '系統已自動計算並最佳化簡化轉帳路徑，以減少不必要的轉帳次數。'}
@@ -1394,6 +1530,9 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
           <span>{toastMsg}</span>
         </div>
       )}
+
+      {/* 使用說明彈窗 */}
+      <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
     </div>
   );
 };

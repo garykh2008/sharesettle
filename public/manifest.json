@@ -1,0 +1,17 @@
+{
+  "short_name": "ShareSettle",
+  "name": "ShareSettle 雲端分帳記帳",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0b0c10",
+  "theme_color": "#1f2833",
+  "display": "standalone",
+  "orientation": "portrait"
+}

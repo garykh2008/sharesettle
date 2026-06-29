@@ -3,11 +3,28 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>sharesettle</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>ShareSettle 雲端分帳記帳</title>
+    <!-- PWA 配置 -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#1f2833" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ShareSettle" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <!-- 註冊 Service Worker -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((reg) => console.log('Service Worker registered successfully:', reg.scope))
+            .catch((err) => console.log('Service Worker registration failed:', err));
+        });
+      }
+    </script>
   </body>
 </html>

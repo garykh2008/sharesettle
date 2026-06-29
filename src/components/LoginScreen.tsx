@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Mail, User, ShieldCheck, Lock } from 'lucide-react';
+import { Mail, User, ShieldCheck, Lock, HelpCircle } from 'lucide-react';
 import { supabase } from '../supabase';
+import { HelpModal } from './HelpModal';
 
 export const LoginScreen: React.FC = () => {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
@@ -9,6 +10,7 @@ export const LoginScreen: React.FC = () => {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   // 處理 Supabase 真實認證 (登入或註冊)
   const handleAuthSubmit = async (e: React.FormEvent) => {
@@ -165,9 +167,17 @@ export const LoginScreen: React.FC = () => {
         </form>
       </div>
 
-      <div style={{ marginTop: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
-        <p>🔒 系統已啟用 Supabase 雲端安全身分驗證，保障您的資安隱私</p>
+      <div style={{ marginTop: '20px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+        <button
+          onClick={() => setShowHelp(true)}
+          style={{ background: 'none', border: 'none', color: 'var(--color-primary-light)', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '500', outline: 'none' }}
+        >
+          <HelpCircle size={15} /> ❓ 新手使用說明與功能引導
+        </button>
+        <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>🔒 系統已啟用 Supabase 雲端安全身分驗證，保障您的資安隱私</span>
       </div>
+
+      <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
     </div>
   );
 };

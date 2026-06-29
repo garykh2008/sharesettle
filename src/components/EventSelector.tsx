@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Users, DollarSign, Calendar, LogOut, CreditCard, Trash2 } from 'lucide-react';
+import { Plus, Users, DollarSign, Calendar, LogOut, CreditCard, Trash2, HelpCircle } from 'lucide-react';
 import type { SplitEvent, UserSession, PaymentMethod, Currency } from '../types';
+import { HelpModal } from './HelpModal';
 
 interface EventSelectorProps {
   events: SplitEvent[];
@@ -67,6 +68,7 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
   };
 
   const [showPaymentEditor, setShowPaymentEditor] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [userPaymentMethods, setUserPaymentMethods] = useState<PaymentMethod[]>(currentUser.paymentMethods || []);
 
   useEffect(() => {
@@ -131,6 +133,9 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
             </div>
           </div>
           <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>
+            <button className="btn btn-secondary" onClick={() => setShowHelp(true)} style={{ padding: '8px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <HelpCircle size={14} /> 使用說明
+            </button>
             <button className="btn btn-secondary" onClick={() => setShowPaymentEditor(!showPaymentEditor)} style={{ padding: '8px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <CreditCard size={14} /> 收款設定
             </button>
@@ -531,6 +536,8 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
           </form>
         </div>
       )}
+
+      <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
     </div>
   );
 };
