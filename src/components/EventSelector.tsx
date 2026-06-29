@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Users, DollarSign, Calendar, LogOut, CreditCard, Trash2, HelpCircle, Bell } from 'lucide-react';
+import { Plus, Users, DollarSign, Calendar, LogOut, CreditCard, Trash2, HelpCircle, Bell, User } from 'lucide-react';
 import type { SplitEvent, UserSession, PaymentMethod, Currency } from '../types';
 import { HelpModal } from './HelpModal';
 
@@ -19,6 +19,7 @@ interface EventSelectorProps {
   onDeleteEvent?: (eventId: string) => void;
   onAcceptInvite?: (eventId: string) => void;
   onDeclineInvite?: (eventId: string) => void;
+  onShowProfileModal: () => void;
 }
 
 export const EventSelector: React.FC<EventSelectorProps> = ({
@@ -31,6 +32,7 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
   onDeleteEvent,
   onAcceptInvite,
   onDeclineInvite,
+  onShowProfileModal,
 }) => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [title, setTitle] = useState('');
@@ -149,8 +151,12 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
       <div className="card-glass" style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px 20px', marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '18px' }}>
-              {currentUser.name[0]?.toUpperCase()}
+            <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '18px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
+              {currentUser.avatarUrl ? (
+                <img src={currentUser.avatarUrl} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                currentUser.name[0]?.toUpperCase()
+              )}
             </div>
             <div>
               <div style={{ fontWeight: '600', fontSize: '15px' }}>{currentUser.name}</div>
@@ -174,6 +180,9 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
             >
               <Bell size={14} style={{ color: notificationPermission === 'granted' ? '#10b981' : undefined }} />
               {notificationPermission === 'granted' ? '通知已啟用 🟢' : '啟用通知'}
+            </button>
+            <button className="btn btn-secondary" onClick={onShowProfileModal} style={{ padding: '8px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <User size={14} /> 個人資料
             </button>
             <button className="btn btn-secondary" onClick={() => setShowHelp(true)} style={{ padding: '8px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <HelpCircle size={14} /> 使用說明

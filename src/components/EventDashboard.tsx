@@ -774,9 +774,21 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                               </span>
                             )}
                           </h4>
-                          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                            由 <strong>{paidByName}</strong> 支付 {expCurrencySym}{exp.amount.toFixed(2)} · {new Date(exp.date).toLocaleDateString()}
-                          </p>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+                            <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '9px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)', flexShrink: 0 }}>
+                              {(() => {
+                                const m = event.members.find(member => member.id === exp.paidById);
+                                return m?.avatarUrl ? (
+                                  <img src={m.avatarUrl} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : (
+                                  paidByName[0]?.toUpperCase()
+                                );
+                              })()}
+                            </div>
+                            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>
+                              由 <strong>{paidByName}</strong> 支付 {expCurrencySym}{exp.amount.toFixed(2)} · {new Date(exp.date).toLocaleDateString()}
+                            </p>
+                          </div>
                         </div>
 
                         <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
@@ -835,8 +847,20 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                             {exp.splits.map((s) => {
                               if (s.amount <= 0) return null;
                               return (
-                                <div key={s.memberId} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                  <span>{getMemberName(s.memberId)}</span>
+                                <div key={s.memberId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '9px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)', flexShrink: 0 }}>
+                                      {(() => {
+                                        const m = event.members.find(member => member.id === s.memberId);
+                                        return m?.avatarUrl ? (
+                                          <img src={m.avatarUrl} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                        ) : (
+                                          getMemberName(s.memberId)[0]?.toUpperCase()
+                                        );
+                                      })()}
+                                    </div>
+                                    <span>{getMemberName(s.memberId)}</span>
+                                  </div>
                                   <span style={{ color: 'var(--text-primary)' }}>
                                     {expCurrencySym}{s.amount.toFixed(2)}
                                     {s.baseAmount !== undefined && s.baseAmount > 0 && (
@@ -1375,36 +1399,45 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                       borderLeft: isCurrentUser ? '4px solid var(--color-primary)' : '1px solid var(--border-color)',
                     }}
                   >
-                    <div>
-                      <div style={{ fontWeight: '600', fontSize: '15px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        {m.name}
-                        {isCurrentUser && (
-                          <span className="badge badge-indigo" style={{ fontSize: '9px', padding: '1px 5px' }}>
-                            您
-                          </span>
-                        )}
-                        {m.status === 'pending' && (
-                          <span className="badge badge-rose" style={{ fontSize: '9px', padding: '1px 5px', textTransform: 'none', background: 'rgba(244, 63, 94, 0.08)' }}>
-                            待接受邀請
-                          </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '15px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)', flexShrink: 0 }}>
+                        {m.avatarUrl ? (
+                          <img src={m.avatarUrl} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          m.name[0]?.toUpperCase()
                         )}
                       </div>
-                      <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
-                        {m.email ? m.email : '👤 臨時成員 (未連結帳號)'}
-                      </div>
-                      
-                      {/* 顯示已設定收款方式簡述 */}
-                      {m.paymentMethods && m.paymentMethods.length > 0 && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '6px' }}>
-                          {m.paymentMethods.map((pm, idx) => (
-                            <span key={idx} className="badge" style={{ fontSize: '10px', padding: '1px 5px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', border: '1px solid rgba(255,255,255,0.05)', textTransform: 'none' }}>
-                              {pm.type === 'cash' && '💵 現金'}
-                              {pm.type === 'transfer' && `🏦 轉帳 (${pm.bankCode})`}
-                              {pm.type === 'linepay' && '💬 LinePay'}
+                      <div>
+                        <div style={{ fontWeight: '600', fontSize: '15px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {m.name}
+                          {isCurrentUser && (
+                            <span className="badge badge-indigo" style={{ fontSize: '9px', padding: '1px 5px' }}>
+                              您
                             </span>
-                          ))}
+                          )}
+                          {m.status === 'pending' && (
+                            <span className="badge badge-rose" style={{ fontSize: '9px', padding: '1px 5px', textTransform: 'none', background: 'rgba(244, 63, 94, 0.08)' }}>
+                              待接受邀請
+                            </span>
+                          )}
                         </div>
-                      )}
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
+                          {m.email ? m.email : '👤 臨時成員 (未連結帳號)'}
+                        </div>
+                        
+                        {/* 顯示已設定收款方式簡述 */}
+                        {m.paymentMethods && m.paymentMethods.length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '6px' }}>
+                            {m.paymentMethods.map((pm, idx) => (
+                              <span key={idx} className="badge" style={{ fontSize: '10px', padding: '1px 5px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', border: '1px solid rgba(255,255,255,0.05)', textTransform: 'none' }}>
+                                {pm.type === 'cash' && '💵 現金'}
+                                {pm.type === 'transfer' && `🏦 轉帳 (${pm.bankCode})`}
+                                {pm.type === 'linepay' && '💬 LinePay'}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

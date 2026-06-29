@@ -6,6 +6,7 @@ import type { SplitEvent, UserSession, Member, PaymentMethod, Expense, Currency 
 import { ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { supabase } from './supabase';
 import { getCurrencySymbol } from './utils';
+import { ProfileModal } from './components/ProfileModal';
 
 function App() {
   const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
@@ -20,6 +21,7 @@ function App() {
   // Toast 訊息狀態
   const [showToast, setShowToast] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   // 1. 於元件掛載時訂閱 Supabase Auth 狀態，並處理 Hash 連結
   useEffect(() => {
@@ -125,6 +127,7 @@ function App() {
     const email = session.user.email || '';
     let name = session.user.user_metadata?.name || email.split('@')[0];
     let paymentMethods: PaymentMethod[] = [];
+    let avatarUrl = '';
 
     try {
       // 向 profiles 表查詢詳細收款與姓名資料
@@ -137,6 +140,7 @@ function App() {
       if (profile) {
         name = profile.name;
         paymentMethods = profile.payment_methods || [];
+        avatarUrl = profile.avatar_url || '';
       }
     } catch (e) {
       console.warn("User profile details not yet in profiles table, using auth metadata", e);
@@ -146,7 +150,8 @@ function App() {
       id: session.user.id,
       email,
       name,
-      paymentMethods
+      paymentMethods,
+      avatarUrl
     };
     
     setCurrentUser(updatedSession);
@@ -478,7 +483,8 @@ function App() {
       id: Math.random().toString(36).substring(2, 9),
       name: currentUser.name,
       email: currentUser.email,
-      paymentMethods: currentUser.paymentMethods || []
+      paymentMethods: currentUser.paymentMethods || [],
+      avatarUrl: currentUser.avatarUrl || ''
     };
 
     const newEvent: SplitEvent = {
@@ -692,6 +698,7 @@ function App() {
               onDeleteEvent={handleDeleteEvent}
               onAcceptInvite={handleAcceptInvite}
               onDeclineInvite={handleDeclineInvite}
+              onShowProfileModal={() => setShowProfileModal(true)}
             />
           )}
         </main>
@@ -704,6 +711,23 @@ function App() {
           </div>
         )}
       </div>
+
+      {currentUser && (
+        <ProfileModal
+          isOpen={showProfileModal}
+          onClose={() => setShowProfileModal(false)}
+          currentUser={currentUser}
+          events={events}
+          onUpdateCurrentUser={(updated) => {
+            setCurrentUser(updated);
+            localStorage.setItem('sharesettle_session', JSON.stringify(updated));
+          }}
+          onUpdateEventsState={(updatedEvents) => {
+            setEvents(updatedEvents);
+            localStorage.setItem('sharesettle_events', JSON.stringify(updatedEvents));
+          }}
+        />
+      )}
     </>
   );
 }

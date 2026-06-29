@@ -10,6 +10,7 @@ export interface PaymentMethod {
   paymentMethods?: PaymentMethod[];
   status?: 'active' | 'pending';
   isTemporary?: boolean;
+  avatarUrl?: string; // 頭像 Public URL
 }
 export type SplitType = 'equal' | 'selected_equal' | 'custom' | 'itemized';
 
@@ -71,4 +72,5 @@ export interface UserSession {
   email: string;
   name: string;
   paymentMethods?: PaymentMethod[];
+  avatarUrl?: string; // 頭像 Public URL
 }
