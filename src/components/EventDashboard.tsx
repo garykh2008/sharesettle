@@ -978,8 +978,8 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                       onClick={() => {
                         onUpdateEvent({
                           ...event,
-                          status: undefined,
-                          settlements: undefined
+                          status: 'active',
+                          settlements: []
                         });
                         setToastMsg('活動已重啟解鎖。');
                         setShowToast(true);
@@ -1003,8 +1003,8 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                       onClick={() => {
                         onUpdateEvent({
                           ...event,
-                          status: undefined,
-                          settlements: undefined
+                          status: 'active',
+                          settlements: []
                         });
                         setToastMsg('已取消結算，帳目已解鎖。');
                         setShowToast(true);
