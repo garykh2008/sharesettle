@@ -734,36 +734,25 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
                           共: {getCurrencySymbol(currency)}{formattedPreview}
                         </span>
                       </div>
-                    ) : splitType === 'custom' && isAutoTipMode ? (
-                      // 自訂小費自動分攤預覽
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>底:</span>
-                          <span style={{ fontSize: '13px', fontWeight: '500' }}>
-                            {getCurrencySymbol(currency)}{(parseFloat(customAmounts[m.id]) || 0).toFixed(2)}
-                          </span>
-                        </div>
-                        {preview && preview.tipAmount !== undefined && preview.tipAmount > 0 && (
-                          <span style={{ fontSize: '11px', color: 'var(--color-secondary-light)' }}>
-                            +費: {preview.tipAmount.toFixed(2)}
-                          </span>
-                        )}
-                        <span style={{ fontSize: '13px', fontWeight: 'bold' }}>
-                          共: {getCurrencySymbol(currency)}{formattedPreview}
-                        </span>
-                      </div>
                     ) : splitType === 'custom' ? (
-                      // 自訂模式：輸入分攤金額
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>{getCurrencySymbol(currency)}</span>
-                        <input
-                          type="text"
-                          className="input-field"
-                          placeholder="0.00"
-                          value={customAmounts[m.id] || ''}
-                          onChange={(e) => handleCustomAmountChange(m.id, e.target.value)}
-                          style={{ width: '90px', padding: '6px 10px', fontSize: '14px', textAlign: 'right' }}
-                        />
+                      // 自訂模式：輸入分攤金額與小費預覽
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>{getCurrencySymbol(currency)}</span>
+                          <input
+                            type="text"
+                            className="input-field"
+                            placeholder="0.00"
+                            value={customAmounts[m.id] || ''}
+                            onChange={(e) => handleCustomAmountChange(m.id, e.target.value)}
+                            style={{ width: '90px', padding: '6px 10px', fontSize: '14px', textAlign: 'right' }}
+                          />
+                        </div>
+                        {isAutoTipMode && preview && preview.tipAmount !== undefined && preview.tipAmount > 0 && (
+                          <div style={{ fontSize: '11px', color: 'var(--color-secondary-light)', textAlign: 'right' }}>
+                            +小費: {getCurrencySymbol(currency)}{preview.tipAmount.toFixed(2)} (共 {getCurrencySymbol(currency)}{formattedPreview})
+                          </div>
+                        )}
                       </div>
                     ) : splitType === 'itemized' ? (
                       // 明細分攤唯讀預覽 (無小費時)
