@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { X, User, Camera, Loader2 } from 'lucide-react';
 import { supabase } from '../supabase';
 import type { UserSession, SplitEvent } from '../types';
+import { compressImage } from '../utils';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -41,8 +42,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      if (file.size > 2 * 1024 * 1024) {
-        setError('大頭貼檔案大小不能超過 2MB！');
+      if (file.size > 20 * 1024 * 1024) {
+        setError('大頭貼檔案大小不能超過 20MB！');
         return;
       }
       setSelectedFile(file);
@@ -71,12 +72,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
       // 1. 上傳頭像到 Supabase Storage (如果有選擇新圖片)
       if (selectedFile) {
-        const fileExt = selectedFile.name.split('.').pop() || 'jpg';
-        const fileName = `${currentUser.id}/avatar_${Date.now()}.${fileExt}`;
+        // 在前端將大頭貼等比例壓縮至 300px * 300px 以內，避免上傳 5MB 手機照片
+        const compressedBlob = await compressImage(selectedFile, 300, 300);
+        const fileName = `${currentUser.id}/avatar_${Date.now()}.jpg`;
         
         const { error: uploadError } = await supabase.storage
           .from('avatars')
-          .upload(fileName, selectedFile, {
+          .upload(fileName, compressedBlob, {
+            contentType: 'image/jpeg',
             cacheControl: '3600',
             upsert: true
           });
@@ -230,7 +233,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 <Camera size={14} style={{ color: '#fff' }} />
               </div>
             </div>
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>點選頭像可更換圖片 (大小限 2MB)</span>
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>點選頭像可更換圖片 (支援手機拍照，自動壓縮)</span>
             <input 
               type="file" 
               ref={fileInputRef} 

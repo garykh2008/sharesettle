@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Trash2, Plus, Upload } from 'lucide-react';
 import type { Member, Expense, SplitType, ExpenseSplit, Currency } from '../types';
-import { round, calculateTipSplits, getCurrencySymbol } from '../utils';
+import { round, calculateTipSplits, getCurrencySymbol, compressImage } from '../utils';
 import { supabase } from '../supabase';
 
 interface ExpenseModalProps {
@@ -276,13 +276,16 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
       setUploading(true);
       try {
         for (const file of receiptFiles) {
-          const fileExt = file.name.split('.').pop();
-          const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+          // 在前端等比例將收據照片最大邊長壓縮至 1200px (以完美保留發票上的細部文字，同時將檔案大小從 5MB+ 降至 150KB 內)
+          const compressedBlob = await compressImage(file, 1200, 1200);
+          const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.jpg`;
           const filePath = `${eventId}/${fileName}`;
 
           const { error } = await supabase.storage
             .from('receipts')
-            .upload(filePath, file);
+            .upload(filePath, compressedBlob, {
+              contentType: 'image/jpeg'
+            });
 
           if (error) throw error;
 
