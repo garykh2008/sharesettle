@@ -1,14 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { LoginScreen } from './components/LoginScreen';
 import { EventSelector } from './components/EventSelector';
 import { EventDashboard } from './components/EventDashboard';
 import type { SplitEvent, UserSession, Member, PaymentMethod, Expense, Currency } from './types';
 import { ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { supabase } from './supabase';
+import { getCurrencySymbol } from './utils';
 
 function App() {
   const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
   const [events, setEvents] = useState<SplitEvent[]>([]);
+  const eventsRef = useRef<SplitEvent[]>([]);
+
+  useEffect(() => {
+    eventsRef.current = events;
+  }, [events]);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
   // Toast 訊息狀態
@@ -198,7 +204,69 @@ function App() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'events' },
-        () => {
+        (payload) => {
+          // 在刷新資料前比對變更以進行系統推播
+          if (payload.eventType === 'UPDATE' && payload.new && currentUser) {
+            const newRaw = payload.new;
+            const oldEvent = eventsRef.current.find(e => e.id === newRaw.id);
+            
+            if (oldEvent) {
+              const newExpenses = (newRaw.expenses || []) as Expense[];
+              const oldExpenses = oldEvent.expenses || [];
+              const newStatus = newRaw.status;
+              const oldStatus = oldEvent.status;
+
+              // 1. 新增記帳比對
+              if (newExpenses.length > oldExpenses.length) {
+                const addedExpense = newExpenses.find(
+                  newExp => !oldExpenses.some(oldExp => oldExp.id === newExp.id)
+                );
+                
+                if (addedExpense && addedExpense.paidById !== currentUser.id) {
+                  // 從新資料的成員名單中找出付款人名字
+                  const payerName = (newRaw.members as Member[])?.find(
+                    m => m.id === addedExpense.paidById
+                  )?.name || '其他成員';
+
+                  const title = `活動「${newRaw.title}」有新記帳`;
+                  const body = `${payerName} 新增了「${addedExpense.title}」消費，金額：${getCurrencySymbol(addedExpense.currency as Currency)}${addedExpense.amount.toFixed(2)}`;
+                  
+                  // A. 發送系統原生 OS 通知
+                  if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+                    try {
+                      new Notification(title, { body, icon: '/favicon.svg' });
+                    } catch (err) {
+                      console.warn("發送 OS 原生通知失敗 (可能在行動裝置瀏覽器上):", err);
+                    }
+                  }
+
+                  // B. 發送 App 內 Toast 橫幅
+                  setToastMsg(`🔔 ${title}：${body}`);
+                  setShowToast(true);
+                  setTimeout(() => setShowToast(false), 5000);
+                }
+              }
+
+              // 2. 結算鎖定狀態比對
+              if (newStatus === 'settled' && oldStatus !== 'settled') {
+                const title = `活動「${newRaw.title}」已鎖定結算！`;
+                const body = `所有帳目已被鎖定，請前往「結算分析」查看收款人資訊並進行匯款。`;
+
+                if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+                  try {
+                    new Notification(title, { body, icon: '/favicon.svg' });
+                  } catch (err) {
+                    console.warn(err);
+                  }
+                }
+
+                setToastMsg(`🔔 ${title}`);
+                setShowToast(true);
+                setTimeout(() => setShowToast(false), 5000);
+              }
+            }
+          }
+
           fetchUserEvents();
         }
       )

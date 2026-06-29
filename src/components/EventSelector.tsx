@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Users, DollarSign, Calendar, LogOut, CreditCard, Trash2, HelpCircle } from 'lucide-react';
+import { Plus, Users, DollarSign, Calendar, LogOut, CreditCard, Trash2, HelpCircle, Bell } from 'lucide-react';
 import type { SplitEvent, UserSession, PaymentMethod, Currency } from '../types';
 import { HelpModal } from './HelpModal';
 
@@ -69,6 +69,31 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
 
   const [showPaymentEditor, setShowPaymentEditor] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
+  );
+
+  const requestNotificationPermission = async () => {
+    if (!('Notification' in window)) {
+      alert("您的瀏覽器或設備不支援系統通知！");
+      return;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+      if (permission === 'granted') {
+        new Notification('🔔 系統通知已啟用！', {
+          body: '當其他成員在此 App 內新增交易或變更活動狀態時，您將會收到即時通知。',
+          icon: '/favicon.svg'
+        });
+      } else if (permission === 'denied') {
+        alert("您已拒絕通知權限。若想啟用，請至瀏覽器設定中允許此網站的通知。");
+      }
+    } catch (err) {
+      console.error("請求通知權限失敗:", err);
+    }
+  };
+
   const [userPaymentMethods, setUserPaymentMethods] = useState<PaymentMethod[]>(currentUser.paymentMethods || []);
 
   useEffect(() => {
@@ -132,7 +157,24 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
               <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>{currentUser.email}</div>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>
+          <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto', flexWrap: 'wrap' }}>
+            <button
+              className={`btn ${notificationPermission === 'granted' ? 'btn-secondary' : 'btn-primary'}`}
+              onClick={requestNotificationPermission}
+              style={{
+                padding: '8px 12px',
+                fontSize: '13px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: notificationPermission === 'granted' ? 'rgba(255, 255, 255, 0.05)' : undefined,
+                border: notificationPermission === 'granted' ? '1px solid rgba(255, 255, 255, 0.1)' : undefined
+              }}
+              title={notificationPermission === 'granted' ? '通知已啟用' : '啟用通知'}
+            >
+              <Bell size={14} style={{ color: notificationPermission === 'granted' ? '#10b981' : undefined }} />
+              {notificationPermission === 'granted' ? '通知已啟用 🟢' : '啟用通知'}
+            </button>
             <button className="btn btn-secondary" onClick={() => setShowHelp(true)} style={{ padding: '8px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <HelpCircle size={14} /> 使用說明
             </button>
