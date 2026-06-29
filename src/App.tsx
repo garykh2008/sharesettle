@@ -172,72 +172,61 @@ function App() {
   // 處理點擊雲端連結加入分帳活動的邏輯
   const handleJoinEventById = async (eventId: string, sessionUser: UserSession) => {
     try {
-      const { data, error } = await supabase
-        .from('events')
-        .select('*')
-        .eq('id', eventId)
-        .single();
-      
-      if (error) throw error;
-      if (data) {
-        const membersList = data.members as Member[];
-        const isMember = membersList.some(m => m.email.toLowerCase() === sessionUser.email.toLowerCase());
-        
-        if (!isMember) {
-          if (window.confirm(`您被邀請參與分帳活動「${data.title}」，是否確定加入此活動？`)) {
-            const newMember: Member = {
-              id: Math.random().toString(36).substring(2, 9),
-              name: sessionUser.name,
-              email: sessionUser.email,
-              paymentMethods: sessionUser.paymentMethods || []
-            };
-            const updatedMembers = [...membersList, newMember];
-            
-            const { error: updateError } = await supabase
-              .from('events')
-              .update({ members: updatedMembers })
-              .eq('id', eventId);
-            
-            if (updateError) throw updateError;
-            setToastMsg(`成功加入活動「${data.title}」！`);
-          } else {
-            return;
-          }
+      // 1. 取得活動名稱與描述預覽 (繞過 RLS 以供加入確認)
+      const { data: preview, error: previewError } = await supabase
+        .rpc('get_event_preview', { event_id: eventId });
+
+      if (previewError) throw previewError;
+      if (!preview) {
+        alert("找不到此雲端活動！");
+        return;
+      }
+
+      // 2. 確認是否加入
+      if (window.confirm(`您被邀請參與分帳活動「${preview.title}」，是否確定加入此活動？`)) {
+        // 3. 呼叫 join_event 函數在資料庫端安全地將自己寫入成員 (繞過 RLS)
+        const { data: joinedEventData, error: joinError } = await supabase
+          .rpc('join_event', {
+            event_id: eventId,
+            user_name: sessionUser.name,
+            user_email: sessionUser.email
+          });
+
+        if (joinError) throw joinError;
+
+        if (joinedEventData) {
+          // 4. 對齊前端 SplitEvent 介面型別
+          const mappedEvent: SplitEvent = {
+            id: joinedEventData.id,
+            title: joinedEventData.title,
+            description: joinedEventData.description,
+            defaultCurrency: joinedEventData.default_currency as 'USD' | 'TWD',
+            usdToTwdRate: Number(joinedEventData.usd_to_twd_rate),
+            status: joinedEventData.status as 'active' | 'settled',
+            members: joinedEventData.members as Member[],
+            expenses: joinedEventData.expenses as Expense[],
+            settlements: joinedEventData.settlements as any,
+            createdAt: joinedEventData.created_at
+          };
+
+          // 5. 更新本地 Events 狀態與選定活動 ID
+          setEvents((prev) => {
+            const idx = prev.findIndex(e => e.id === mappedEvent.id);
+            let updated = [...prev];
+            if (idx >= 0) {
+              updated[idx] = mappedEvent;
+            } else {
+              updated = [mappedEvent, ...updated];
+            }
+            localStorage.setItem('sharesettle_events', JSON.stringify(updated));
+            return updated;
+          });
+
+          setSelectedEventId(mappedEvent.id);
+          setToastMsg(`成功加入活動「${preview.title}」！`);
+          setShowToast(true);
+          setTimeout(() => setShowToast(false), 3000);
         }
-        
-        const mappedEvent: SplitEvent = {
-          id: data.id,
-          title: data.title,
-          description: data.description,
-          defaultCurrency: data.default_currency as 'USD' | 'TWD',
-          usdToTwdRate: Number(data.usd_to_twd_rate),
-          status: data.status as 'active' | 'settled',
-          members: isMember ? membersList : [...membersList, {
-            id: Math.random().toString(36).substring(2, 9),
-            name: sessionUser.name,
-            email: sessionUser.email,
-            paymentMethods: sessionUser.paymentMethods || []
-          }],
-          expenses: data.expenses as Expense[],
-          settlements: data.settlements as any,
-          createdAt: data.created_at
-        };
-
-        setEvents((prev) => {
-          const idx = prev.findIndex(e => e.id === mappedEvent.id);
-          let updated = [...prev];
-          if (idx >= 0) {
-            updated[idx] = mappedEvent;
-          } else {
-            updated = [mappedEvent, ...updated];
-          }
-          localStorage.setItem('sharesettle_events', JSON.stringify(updated));
-          return updated;
-        });
-
-        setSelectedEventId(mappedEvent.id);
-        setShowToast(true);
-        setTimeout(() => setShowToast(false), 3000);
       }
     } catch (e) {
       console.error("Failed to join event", e);
