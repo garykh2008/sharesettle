@@ -84,6 +84,7 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
 
   // 收據放大預覽控制
   const [previewReceiptUrl, setPreviewReceiptUrl] = useState<string | null>(null);
+  const [previewAvatarUrl, setPreviewAvatarUrl] = useState<string | null>(null);
 
   // 展開/收合款項明細
   const [expandedExpenses, setExpandedExpenses] = useState<{ [id: string]: boolean }>({});
@@ -775,7 +776,31 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                             )}
                           </h4>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-                            <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '9px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)', flexShrink: 0 }}>
+                            <div 
+                              onClick={(e) => {
+                                const m = event.members.find(member => member.id === exp.paidById);
+                                if (m?.avatarUrl) {
+                                  e.stopPropagation();
+                                  setPreviewAvatarUrl(m.avatarUrl);
+                                }
+                              }}
+                              style={{ 
+                                width: '18px', 
+                                height: '18px', 
+                                borderRadius: '50%', 
+                                background: 'var(--gradient-primary)', 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center', 
+                                fontWeight: 'bold', 
+                                fontSize: '9px', 
+                                overflow: 'hidden', 
+                                border: '1px solid rgba(255,255,255,0.05)', 
+                                flexShrink: 0,
+                                cursor: event.members.find(member => member.id === exp.paidById)?.avatarUrl ? 'pointer' : 'default'
+                              }}
+                              title={event.members.find(member => member.id === exp.paidById)?.avatarUrl ? "點擊檢視大頭貼" : undefined}
+                            >
                               {(() => {
                                 const m = event.members.find(member => member.id === exp.paidById);
                                 return m?.avatarUrl ? (
@@ -849,7 +874,28 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                               return (
                                 <div key={s.memberId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '9px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)', flexShrink: 0 }}>
+                                    <div 
+                                      onClick={() => {
+                                        const m = event.members.find(member => member.id === s.memberId);
+                                        if (m?.avatarUrl) setPreviewAvatarUrl(m.avatarUrl);
+                                      }}
+                                      style={{ 
+                                        width: '18px', 
+                                        height: '18px', 
+                                        borderRadius: '50%', 
+                                        background: 'var(--gradient-primary)', 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        justifyContent: 'center', 
+                                        fontWeight: 'bold', 
+                                        fontSize: '9px', 
+                                        overflow: 'hidden', 
+                                        border: '1px solid rgba(255,255,255,0.05)', 
+                                        flexShrink: 0,
+                                        cursor: event.members.find(member => member.id === s.memberId)?.avatarUrl ? 'pointer' : 'default'
+                                      }}
+                                      title={event.members.find(member => member.id === s.memberId)?.avatarUrl ? "點擊檢視大頭貼" : undefined}
+                                    >
                                       {(() => {
                                         const m = event.members.find(member => member.id === s.memberId);
                                         return m?.avatarUrl ? (
@@ -1400,7 +1446,25 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '15px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)', flexShrink: 0 }}>
+                      <div 
+                        onClick={() => m.avatarUrl && setPreviewAvatarUrl(m.avatarUrl)}
+                        style={{ 
+                          width: '36px', 
+                          height: '36px', 
+                          borderRadius: '50%', 
+                          background: 'var(--gradient-primary)', 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'center', 
+                          fontWeight: 'bold', 
+                          fontSize: '15px', 
+                          overflow: 'hidden', 
+                          border: '1px solid rgba(255,255,255,0.05)', 
+                          flexShrink: 0,
+                          cursor: m.avatarUrl ? 'pointer' : 'default'
+                        }}
+                        title={m.avatarUrl ? "點擊檢視大頭貼" : undefined}
+                      >
                         {m.avatarUrl ? (
                           <img src={m.avatarUrl} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         ) : (
@@ -1551,6 +1615,67 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
               }}
             >
               關閉
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 大頭貼大圖預覽燈箱 (Lightbox) */}
+      {previewAvatarUrl && (
+        <div 
+          onClick={() => setPreviewAvatarUrl(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            background: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            cursor: 'zoom-out',
+            padding: '20px',
+            boxSizing: 'border-box'
+          }}
+          className="animate-fade-in"
+        >
+          <div style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh' }}>
+            <img 
+              src={previewAvatarUrl} 
+              alt="使用者大頭貼大圖" 
+              style={{ 
+                maxWidth: '100%', 
+                maxHeight: '80vh', 
+                borderRadius: '50%',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+                border: '4px solid rgba(255,255,255,0.2)',
+                objectFit: 'cover',
+                width: '320px',
+                height: '320px'
+              }} 
+            />
+            <button 
+              onClick={(e) => { e.stopPropagation(); setPreviewAvatarUrl(null); }}
+              style={{
+                position: 'absolute',
+                top: '-40px',
+                right: '50%',
+                transform: 'translateX(50%)',
+                background: 'rgba(255,255,255,0.1)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                color: 'white',
+                padding: '6px 16px',
+                borderRadius: '20px',
+                fontSize: '12px',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                backdropFilter: 'blur(4px)'
+              }}
+            >
+              關閉預覽
             </button>
           </div>
         </div>

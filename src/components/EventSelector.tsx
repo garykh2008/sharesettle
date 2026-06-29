@@ -37,6 +37,7 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
+  const [previewAvatarUrl, setPreviewAvatarUrl] = useState<string | null>(null);
   
   // 多幣別與結算配置狀態
   const [supportedCurrencies, setSupportedCurrencies] = useState<Currency[]>(['TWD']);
@@ -151,7 +152,24 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
       <div className="card-glass" style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px 20px', marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--gradient-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '18px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div 
+              onClick={() => currentUser.avatarUrl && setPreviewAvatarUrl(currentUser.avatarUrl)}
+              style={{ 
+                width: '40px', 
+                height: '40px', 
+                borderRadius: '50%', 
+                background: 'var(--gradient-primary)', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                fontWeight: 'bold', 
+                fontSize: '18px', 
+                overflow: 'hidden', 
+                border: '1px solid rgba(255,255,255,0.05)',
+                cursor: currentUser.avatarUrl ? 'pointer' : 'default'
+              }}
+              title={currentUser.avatarUrl ? "點擊檢視大頭貼" : undefined}
+            >
               {currentUser.avatarUrl ? (
                 <img src={currentUser.avatarUrl} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
@@ -589,6 +607,67 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
       )}
 
       <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
+
+      {/* 大頭貼大圖預覽燈箱 (Lightbox) */}
+      {previewAvatarUrl && (
+        <div 
+          onClick={() => setPreviewAvatarUrl(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            background: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            cursor: 'zoom-out',
+            padding: '20px',
+            boxSizing: 'border-box'
+          }}
+          className="animate-fade-in"
+        >
+          <div style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh' }}>
+            <img 
+              src={previewAvatarUrl} 
+              alt="使用者大頭貼大圖" 
+              style={{ 
+                maxWidth: '100%', 
+                maxHeight: '80vh', 
+                borderRadius: '50%',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+                border: '4px solid rgba(255,255,255,0.2)',
+                objectFit: 'cover',
+                width: '320px',
+                height: '320px'
+              }} 
+            />
+            <button 
+              onClick={(e) => { e.stopPropagation(); setPreviewAvatarUrl(null); }}
+              style={{
+                position: 'absolute',
+                top: '-40px',
+                right: '50%',
+                transform: 'translateX(50%)',
+                background: 'rgba(255,255,255,0.1)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                color: 'white',
+                padding: '6px 16px',
+                borderRadius: '20px',
+                fontSize: '12px',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                backdropFilter: 'blur(4px)'
+              }}
+            >
+              關閉預覽
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
-};
+}
