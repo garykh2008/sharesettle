@@ -46,6 +46,43 @@ function App() {
     };
   }, []);
 
+  // 處理瀏覽器「上一頁」按鈕 (包含 Android 實體/手勢返回鍵)
+  useEffect(() => {
+    // 初始化首頁歷史狀態
+    if (window.history.state === null) {
+      window.history.replaceState({ type: 'list' }, '');
+    }
+
+    const handlePopState = (e: PopStateEvent) => {
+      const state = e.state;
+      if (state && state.type === 'event') {
+        setSelectedEventId(state.eventId);
+      } else {
+        setSelectedEventId(null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
+
+  // 監聽 selectedEventId 變更，同步 push/pop 瀏覽器歷史紀錄
+  useEffect(() => {
+    if (selectedEventId) {
+      // 避免重複 pushState (如 popstate 觸發時)
+      if (!window.history.state || window.history.state.eventId !== selectedEventId) {
+        window.history.pushState({ type: 'event', eventId: selectedEventId }, '');
+      }
+    } else {
+      // 若是點選 App 內部返回按鈕且當前歷史還在 event 狀態，退回上一頁
+      if (window.history.state && window.history.state.type === 'event') {
+        window.history.back();
+      }
+    }
+  }, [selectedEventId]);
+
   // 當 URL Hash 改變時，檢查是否有加入連結
   useEffect(() => {
     const handleHashImport = () => {
