@@ -164,6 +164,34 @@ function App() {
   useEffect(() => {
     if (!currentUser) return;
 
+    // 系統級 OS 通知輔助函式 (優先使用 Service Worker 以支援行動裝置與背景執行)
+    const sendSystemNotification = (title: string, body: string) => {
+      if (typeof window === 'undefined') return;
+      if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then((reg) => {
+          reg.showNotification(title, {
+            body: body,
+            icon: '/favicon.svg',
+            badge: '/favicon.svg',
+            tag: 'sharesettle-alert'
+          }).catch((err) => {
+            console.warn("Service Worker showNotification 失敗，使用 window.Notification fallback:", err);
+            new Notification(title, { body, icon: '/favicon.svg' });
+          });
+        }).catch(() => {
+          new Notification(title, { body, icon: '/favicon.svg' });
+        });
+      } else {
+        try {
+          new Notification(title, { body, icon: '/favicon.svg' });
+        } catch (err) {
+          console.warn("Native Notification 失敗:", err);
+        }
+      }
+    };
+
     const fetchUserEvents = async () => {
       try {
         const { data, error } = await supabase
@@ -223,7 +251,6 @@ function App() {
                 );
                 
                 if (addedExpense && addedExpense.paidById !== currentUser.id) {
-                  // 從新資料的成員名單中找出付款人名字
                   const payerName = (newRaw.members as Member[])?.find(
                     m => m.id === addedExpense.paidById
                   )?.name || '其他成員';
@@ -231,38 +258,63 @@ function App() {
                   const title = `活動「${newRaw.title}」有新記帳`;
                   const body = `${payerName} 新增了「${addedExpense.title}」消費，金額：${getCurrencySymbol(addedExpense.currency as Currency)}${addedExpense.amount.toFixed(2)}`;
                   
-                  // A. 發送系統原生 OS 通知
-                  if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-                    try {
-                      new Notification(title, { body, icon: '/favicon.svg' });
-                    } catch (err) {
-                      console.warn("發送 OS 原生通知失敗 (可能在行動裝置瀏覽器上):", err);
-                    }
-                  }
+                  sendSystemNotification(title, body);
 
-                  // B. 發送 App 內 Toast 橫幅
                   setToastMsg(`🔔 ${title}：${body}`);
                   setShowToast(true);
                   setTimeout(() => setShowToast(false), 5000);
                 }
               }
 
-              // 2. 結算鎖定狀態比對
-              if (newStatus === 'settled' && oldStatus !== 'settled') {
-                const title = `活動「${newRaw.title}」已鎖定結算！`;
-                const body = `所有帳目已被鎖定，請前往「結算分析」查看收款人資訊並進行匯款。`;
+              // 2. 修改記帳比對
+              if (newExpenses.length === oldExpenses.length) {
+                const modifiedExpense = newExpenses.find(newExp => {
+                  const oldExp = oldExpenses.find(o => o.id === newExp.id);
+                  if (!oldExp) return false;
+                  return (
+                    newExp.title !== oldExp.title ||
+                    newExp.amount !== oldExp.amount ||
+                    newExp.currency !== oldExp.currency ||
+                    JSON.stringify(newExp.splits) !== JSON.stringify(oldExp.splits)
+                  );
+                });
 
-                if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-                  try {
-                    new Notification(title, { body, icon: '/favicon.svg' });
-                  } catch (err) {
-                    console.warn(err);
-                  }
+                if (modifiedExpense && modifiedExpense.paidById !== currentUser.id) {
+                  const payerName = (newRaw.members as Member[])?.find(
+                    m => m.id === modifiedExpense.paidById
+                  )?.name || '其他成員';
+
+                  const title = `活動「${newRaw.title}」有帳目修改`;
+                  const body = `「${modifiedExpense.title}」已被更新。付款人：${payerName}，金額：${getCurrencySymbol(modifiedExpense.currency as Currency)}${modifiedExpense.amount.toFixed(2)}`;
+
+                  sendSystemNotification(title, body);
+
+                  setToastMsg(`🔔 ${title}：${body}`);
+                  setShowToast(true);
+                  setTimeout(() => setShowToast(false), 5000);
+                }
+              }
+
+              // 3. 結算狀態改變比對 (鎖定與重啟)
+              if (newStatus !== oldStatus) {
+                let title = '';
+                let body = '';
+
+                if (newStatus === 'settled') {
+                  title = `活動「${newRaw.title}」已鎖定結算！`;
+                  body = `所有帳目已被鎖定，請前往「結算分析」查看收款人資訊並進行匯款。`;
+                } else if ((newStatus === 'active' || !newStatus) && oldStatus === 'settled') {
+                  title = `活動「${newRaw.title}」已取消結算並解鎖`;
+                  body = `帳目已重新開放編輯，您可以繼續記帳或調整明細。`;
                 }
 
-                setToastMsg(`🔔 ${title}`);
-                setShowToast(true);
-                setTimeout(() => setShowToast(false), 5000);
+                if (title && body) {
+                  sendSystemNotification(title, body);
+
+                  setToastMsg(`🔔 ${title}`);
+                  setShowToast(true);
+                  setTimeout(() => setShowToast(false), 5000);
+                }
               }
             }
           }
