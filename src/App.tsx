@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { LoginScreen } from './components/LoginScreen';
 import { EventSelector } from './components/EventSelector';
 import { EventDashboard } from './components/EventDashboard';
+import { AdminDashboard } from './components/AdminDashboard';
 import type { SplitEvent, UserSession, Member, PaymentMethod, Expense, Currency } from './types';
 import { ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { supabase } from './supabase';
@@ -22,6 +23,7 @@ function App() {
   const [showToast, setShowToast] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
 
   // 1. 於元件掛載時訂閱 Supabase Auth 狀態，並處理 Hash 連結
   useEffect(() => {
@@ -128,6 +130,7 @@ function App() {
     let name = session.user.user_metadata?.name || email.split('@')[0];
     let paymentMethods: PaymentMethod[] = [];
     let avatarUrl = '';
+    let isAdmin = false;
 
     try {
       // 向 profiles 表查詢詳細收款與姓名資料
@@ -141,6 +144,7 @@ function App() {
         name = profile.name;
         paymentMethods = profile.payment_methods || [];
         avatarUrl = profile.avatar_url || '';
+        isAdmin = profile.is_admin === true;
       }
     } catch (e) {
       console.warn("User profile details not yet in profiles table, using auth metadata", e);
@@ -151,7 +155,8 @@ function App() {
       email,
       name,
       paymentMethods,
-      avatarUrl
+      avatarUrl,
+      isAdmin
     };
     
     setCurrentUser(updatedSession);
@@ -680,6 +685,8 @@ function App() {
         <main className="content-body">
           {!currentUser ? (
             <LoginScreen />
+          ) : showAdmin && currentUser.isAdmin ? (
+            <AdminDashboard onBack={() => setShowAdmin(false)} />
           ) : currentEvent ? (
             <EventDashboard
               event={currentEvent}
@@ -699,6 +706,7 @@ function App() {
               onAcceptInvite={handleAcceptInvite}
               onDeclineInvite={handleDeclineInvite}
               onShowProfileModal={() => setShowProfileModal(true)}
+              onShowAdmin={() => setShowAdmin(true)}
             />
           )}
         </main>

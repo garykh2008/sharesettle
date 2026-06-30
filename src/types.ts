@@ -73,4 +73,5 @@ export interface UserSession {
   name: string;
   paymentMethods?: PaymentMethod[];
   avatarUrl?: string; // 頭像 Public URL
+  isAdmin?: boolean; // 是否為管理員
 }

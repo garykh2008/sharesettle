@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Users, DollarSign, Calendar, LogOut, CreditCard, Trash2, HelpCircle, Bell, User, Settings } from 'lucide-react';
+import { Plus, Users, DollarSign, Calendar, LogOut, CreditCard, Trash2, HelpCircle, Bell, User, Settings, ShieldCheck } from 'lucide-react';
 import type { SplitEvent, UserSession, PaymentMethod, Currency } from '../types';
 import { HelpModal } from './HelpModal';
 
@@ -20,6 +20,7 @@ interface EventSelectorProps {
   onAcceptInvite?: (eventId: string) => void;
   onDeclineInvite?: (eventId: string) => void;
   onShowProfileModal: () => void;
+  onShowAdmin?: () => void;
 }
 
 export const EventSelector: React.FC<EventSelectorProps> = ({
@@ -33,6 +34,7 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
   onAcceptInvite,
   onDeclineInvite,
   onShowProfileModal,
+  onShowAdmin,
 }) => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [title, setTitle] = useState('');
@@ -670,6 +672,7 @@ export const EventSelector: React.FC<EventSelectorProps> = ({
           }}
         >
           {[
+            ...(currentUser.isAdmin && onShowAdmin ? [{ icon: <ShieldCheck size={14} style={{ color: '#8b5cf6' }} />, label: '管理後台', onClick: () => { onShowAdmin(); setShowMenu(false); } }] : []),
             { icon: <User size={14} />, label: '個人資料', onClick: () => { onShowProfileModal(); setShowMenu(false); } },
             { icon: <CreditCard size={14} />, label: '收款設定', onClick: () => { setShowPaymentEditor(v => !v); setShowMenu(false); } },
             { icon: <HelpCircle size={14} />, label: '使用說明', onClick: () => { setShowHelp(true); setShowMenu(false); } },
