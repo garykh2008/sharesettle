@@ -146,18 +146,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           {/* 分頁與搜尋 */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '20px', alignItems: 'center', justifyContent: 'space-between' }}>
             <div className="tabs-container" style={{ marginBottom: 0, flex: 1, minWidth: '200px' }}>
-              <div 
-                className={`tab ${activeTab === 'users' ? 'active' : ''}`}
+              <button 
+                className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`}
                 onClick={() => setActiveTab('users')}
               >
                 使用者列表
-              </div>
-              <div 
-                className={`tab ${activeTab === 'events' ? 'active' : ''}`}
+              </button>
+              <button 
+                className={`tab-btn ${activeTab === 'events' ? 'active' : ''}`}
                 onClick={() => setActiveTab('events')}
               >
                 活動列表
-              </div>
+              </button>
             </div>
 
             <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
