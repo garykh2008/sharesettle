@@ -49,12 +49,16 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
   // 載入編輯資料或初始化
   useEffect(() => {
     if (expenseToEdit) {
+      // 取得目前有效的成員 ID 集合（用於過濾殘留的舊 temp ID）
+      const validMemberIds = new Set(members.map((m) => m.id));
+
       setTitle(expenseToEdit.title);
       setReceiptUrls(expenseToEdit.receiptUrls || (expenseToEdit.receiptUrl ? [expenseToEdit.receiptUrl] : []));
       setReceiptFiles([]);
       setLocalPreviewUrls([]);
       setAmountStr(expenseToEdit.amount.toString());
-      setPaidById(expenseToEdit.paidById);
+      // 若付款人 ID 已失效（舊 temp ID），自動 fallback 到第一位成員
+      setPaidById(validMemberIds.has(expenseToEdit.paidById) ? expenseToEdit.paidById : (members[0]?.id || ''));
       setCurrency(expenseToEdit.currency);
       setDate(expenseToEdit.date);
       setSplitType(expenseToEdit.splitType);
@@ -63,10 +67,11 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
       const custAmts: { [memberId: string]: string } = {};
 
       expenseToEdit.splits.forEach((s) => {
+        // 過濾掉已不存在於成員清單的舊 temp ID
+        if (!validMemberIds.has(s.memberId)) return;
         if (s.amount > 0) {
           selIds.push(s.memberId);
         }
-        // 如果該項目儲存時有 baseAmount (小費模式產物)，將其還原為基礎分攤輸入；否則載入 amount
         custAmts[s.memberId] = s.baseAmount !== undefined && s.baseAmount > 0
           ? s.baseAmount.toString()
           : (s.amount ? s.amount.toString() : '');
@@ -80,7 +85,8 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
           id: item.id,
           name: item.name,
           amountStr: item.amount.toString(),
-          memberIds: item.memberIds
+          // 過濾掉品項中已失效的 temp ID
+          memberIds: item.memberIds.filter((mid) => validMemberIds.has(mid))
         })));
       } else {
         setItemInputs([]);

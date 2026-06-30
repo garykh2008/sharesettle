@@ -933,7 +933,11 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                                       <span style={{ fontWeight: 'bold' }}>{expCurrencySym}{it.amount.toFixed(2)}</span>
                                     </div>
                                     <div style={{ color: 'var(--text-muted)', fontSize: '11px', marginTop: '2px' }}>
-                                      由 {it.memberIds.map(mid => getMemberName(mid)).join(', ')} 平分 ({it.memberIds.length} 人，每人 {expCurrencySym}{round(it.amount / it.memberIds.length).toFixed(2)})
+                                      {(() => {
+                                        const validIds = it.memberIds.filter(mid => event.members.some(m => m.id === mid));
+                                        if (validIds.length === 0) return <span style={{ color: 'var(--color-danger)', opacity: 0.7 }}>⚠️ 成員資料需重新編輯</span>;
+                                        return `由 ${validIds.map(mid => getMemberName(mid)).join(', ')} 平分 (${validIds.length} 人，每人 ${expCurrencySym}${round(it.amount / validIds.length).toFixed(2)})`;
+                                      })()}
                                     </div>
                                   </div>
                                 ))}
