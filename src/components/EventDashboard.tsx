@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Plus, Users, DollarSign, Share2, Settings, Trash2, Edit2, CheckCircle2, ChevronDown, ChevronUp, HelpCircle, Search, Download } from 'lucide-react';
 import type { SplitEvent, Member, Expense, UserSession, Currency } from '../types';
 import { calculateSettlements, convertCurrency, round, getCurrencySymbol } from '../utils';
@@ -88,6 +88,13 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
 
   // 展開/收合款項明細
   const [expandedExpenses, setExpandedExpenses] = useState<{ [id: string]: boolean }>({});
+
+  // 連結臨時成員帳號彈窗狀態
+  const [linkModalTarget, setLinkModalTarget] = useState<Member | null>(null);
+  const [linkEmail, setLinkEmail] = useState('');
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [linkError, setLinkError] = useState('');
+  const linkEmailRef = useRef<HTMLInputElement>(null);
 
   // 複製連結的 Toast 狀態
   const [showToast, setShowToast] = useState(false);
@@ -214,19 +221,20 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
   };
 
   // 連結臨時成員到已註冊的雲端帳號
-  const handleLinkAccount = async (memberId: string, currentName: string) => {
-    const inputVal = window.prompt(`請輸入欲與「${currentName}」連結的成員電子信箱或信箱前綴：`);
-    if (!inputVal || !inputVal.trim()) return;
+  const handleLinkAccount = async () => {
+    if (!linkModalTarget) return;
+    const searchVal = linkEmail.trim();
+    if (!searchVal) { setLinkError('請輸入電子信箱或前綴！'); return; }
 
-    const searchVal = inputVal.trim();
+    setLinkLoading(true);
+    setLinkError('');
+
     const isEmail = searchVal.includes('@');
-    
     try {
       let query = supabase.from('profiles').select('*');
       if (isEmail) {
         query = query.eq('email', searchVal.toLowerCase());
       } else {
-        // 以信箱 @ 前綴搜尋 (例如: input 為 bob，則搜尋 bob@%)
         query = query.like('email', `${searchVal.toLowerCase()}@%`);
       }
 
@@ -234,54 +242,77 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
       if (error) throw error;
 
       if (!profiles || profiles.length === 0) {
-        alert('找不到該使用者！受邀人必須先註冊 ShareSettle 帳號，請確認信箱或前綴是否正確。');
+        setLinkError('找不到該使用者！請確認已在 ShareSettle 註冊，或使用完整 Email 搜尋。');
         return;
       }
-
       if (profiles.length > 1) {
-        alert('搜尋到多個符合該前綴的信箱，請輸入完整的 Email 進行邀請！');
+        setLinkError('搜尋到多個符合的帳號，請輸入完整的 Email！');
         return;
       }
 
       const profile = profiles[0];
+      const oldId = linkModalTarget.id;
+      const newId = profile.id;
 
-      // 檢查該帳號是否已經是活動成員
+      // 檢查是否已是成員
       const isAlreadyMember = event.members.some(
-        (m) => m.email.toLowerCase() === profile.email.toLowerCase() && m.id !== memberId
+        (m) => m.email && m.email.toLowerCase() === profile.email.toLowerCase() && m.id !== oldId
       );
       if (isAlreadyMember) {
-        alert('該帳號已在此活動的成員清單中，無法重複連結！');
+        setLinkError('該帳號已在成員清單中，無法重複連結！');
         return;
       }
 
-      if (!window.confirm(`確定要將臨時成員「${currentName}」連結至已註冊帳號「${profile.name} (${profile.email})」嗎？\n連結後會向對方發送活動邀請，對方接受後即可共同管理。`)) {
-        return;
-      }
+      // 1. 更新成員資料：使用真實姓名，替換 ID，標記為待接受邀請
+      const updatedMembers = event.members.map((m) =>
+        m.id === oldId
+          ? {
+              ...m,
+              id: newId,
+              name: profile.name || m.name, // 使用已註冊帳號的真實姓名
+              email: profile.email,
+              avatarUrl: profile.avatar_url || m.avatarUrl,
+              paymentMethods: profile.payment_methods || [],
+              status: 'pending' as const,
+              isTemporary: false
+            }
+          : m
+      );
 
-      // 更新成員名單：將臨時欄位填上信箱與將 status 設為 pending
-      const updatedMembers = event.members.map((m) => {
-        if (m.id === memberId) {
-          return {
-            ...m,
-            name: currentName, // 保持活動中已使用的名字，便於對帳
-            email: profile.email,
-            paymentMethods: profile.payment_methods || [],
-            status: 'pending' as const, // 設定為待接受狀態
-            isTemporary: false
-          };
-        }
-        return m;
-      });
+      // 2. 替換所有帳目中的舊 temp ID → 新真實 ID
+      const updatedExpenses = event.expenses.map((exp) => ({
+        ...exp,
+        paidById: exp.paidById === oldId ? newId : exp.paidById,
+        splits: exp.splits.map((s) => ({
+          ...s,
+          memberId: s.memberId === oldId ? newId : s.memberId
+        }))
+      }));
+
+      // 3. 替換結算記錄中的舊 ID（若已有結算快照）
+      const updatedSettlements = event.settlements?.map((sr) => ({
+        ...sr,
+        fromId: sr.fromId === oldId ? newId : sr.fromId,
+        toId: sr.toId === oldId ? newId : sr.toId
+      }));
 
       onUpdateEvent({
         ...event,
-        members: updatedMembers
+        members: updatedMembers,
+        expenses: updatedExpenses,
+        ...(updatedSettlements ? { settlements: updatedSettlements } : {})
       });
 
-      alert(`已成功連結！已向 ${profile.name} 發送邀請，待對方在首頁點選「接受」即會同步。`);
+      setLinkModalTarget(null);
+      setLinkEmail('');
+      setToastMsg(`已連結至 ${profile.name}，並向對方發送活動邀請！`);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 4000);
     } catch (err: any) {
       console.error(err);
-      alert(err.message || '連結帳號時發生錯誤。');
+      setLinkError(err.message || '連結帳號時發生錯誤。');
+    } finally {
+      setLinkLoading(false);
     }
   };
 
@@ -1508,7 +1539,12 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                       {(m.isTemporary || !m.email) && (
                         <button
                           className="btn btn-secondary"
-                          onClick={() => handleLinkAccount(m.id, m.name)}
+                          onClick={() => {
+                            setLinkModalTarget(m);
+                            setLinkEmail('');
+                            setLinkError('');
+                            setTimeout(() => linkEmailRef.current?.focus(), 50);
+                          }}
                           style={{ padding: '4px 10px', fontSize: '11px', height: '28px', border: '1px solid var(--border-color)' }}
                         >
                           🔗 連結帳號
@@ -1562,6 +1598,125 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
         defaultCurrency={event.settlementCurrency || event.defaultCurrency || 'TWD'}
         eventId={event.id}
       />
+
+      {/* 連結帳號彈窗 */}
+      {linkModalTarget && (
+        <div
+          onClick={() => { setLinkModalTarget(null); setLinkEmail(''); setLinkError(''); }}
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(0,0,0,0.7)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 9000, padding: '20px', boxSizing: 'border-box'
+          }}
+          className="animate-fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--bg-card)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '16px',
+              padding: '28px 24px',
+              width: '100%',
+              maxWidth: '420px',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.5)'
+            }}
+          >
+            {/* 標題 */}
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontSize: '18px', fontWeight: '700', marginBottom: '6px' }}>
+                🔗 連結已註冊帳號
+              </div>
+              <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+                將臨時成員
+                <span style={{ color: 'var(--text-primary)', fontWeight: '600', margin: '0 4px' }}>
+                  「{linkModalTarget.name}」
+                </span>
+                的所有帳目記錄轉移至已註冊使用者，並使用其真實姓名與大頭貼。
+              </div>
+            </div>
+
+            {/* Email 輸入 */}
+            <div className="form-group" style={{ marginBottom: '16px' }}>
+              <label style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                已註冊使用者的 Email 或 Email 前綴
+              </label>
+              <input
+                ref={linkEmailRef}
+                className="input-field"
+                type="text"
+                placeholder="例：gary@example.com 或 gary"
+                value={linkEmail}
+                onChange={(e) => { setLinkEmail(e.target.value); setLinkError(''); }}
+                onKeyDown={(e) => e.key === 'Enter' && !linkLoading && handleLinkAccount()}
+                disabled={linkLoading}
+                style={{ width: '100%', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            {/* 錯誤訊息 */}
+            {linkError && (
+              <div style={{
+                background: 'rgba(244,63,94,0.1)',
+                border: '1px solid rgba(244,63,94,0.3)',
+                borderRadius: '8px',
+                padding: '10px 14px',
+                fontSize: '13px',
+                color: '#f87171',
+                marginBottom: '16px'
+              }}>
+                {linkError}
+              </div>
+            )}
+
+            {/* 說明 */}
+            <div style={{
+              background: 'rgba(139,92,246,0.08)',
+              border: '1px solid rgba(139,92,246,0.15)',
+              borderRadius: '8px',
+              padding: '10px 14px',
+              fontSize: '12px',
+              color: 'var(--text-secondary)',
+              marginBottom: '20px',
+              lineHeight: '1.6'
+            }}>
+              ℹ️ 連結後將：
+              <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                <li>臨時成員名稱更新為真實姓名與大頭貼</li>
+                <li>所有歷史帳目（付款人、分攤明細）自動更新歸屬</li>
+                <li>向對方發送加入邀請，待接受後可共同管理</li>
+              </ul>
+            </div>
+
+            {/* 按鈕 */}
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => { setLinkModalTarget(null); setLinkEmail(''); setLinkError(''); }}
+                style={{ flex: 1 }}
+                disabled={linkLoading}
+              >
+                取消
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleLinkAccount}
+                style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                disabled={linkLoading || !linkEmail.trim()}
+              >
+                {linkLoading ? (
+                  <>
+                    <span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+                    搜尋中...
+                  </>
+                ) : '🔗 確認連結'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 收據大圖預覽燈箱 (Lightbox) */}
       {previewReceiptUrl && (
