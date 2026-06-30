@@ -269,6 +269,11 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
           splits: exp.splits.map((s) => ({
             ...s,
             memberId: s.memberId === oldId ? mergeId : s.memberId
+          })),
+          // 修復：逐項分攤模式下各品項的 memberIds 也需替換
+          items: exp.items?.map((item) => ({
+            ...item,
+            memberIds: item.memberIds.map((mid) => mid === oldId ? mergeId : mid)
           }))
         }));
 
@@ -321,6 +326,11 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
         splits: exp.splits.map((s) => ({
           ...s,
           memberId: s.memberId === oldId ? newId : s.memberId
+        })),
+        // 修復：逐項分攤模式下各品項的 memberIds 也需替換
+        items: exp.items?.map((item) => ({
+          ...item,
+          memberIds: item.memberIds.map((mid) => mid === oldId ? newId : mid)
         }))
       }));
 
