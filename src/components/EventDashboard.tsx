@@ -254,14 +254,49 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
       const oldId = linkModalTarget.id;
       const newId = profile.id;
 
-      // 檢查是否已是成員
-      const isAlreadyMember = event.members.some(
+      // 檢查對象是否已在成員清單中（不同 ID，但 email 相同）
+      const existingMember = event.members.find(
         (m) => m.email && m.email.toLowerCase() === profile.email.toLowerCase() && m.id !== oldId
       );
-      if (isAlreadyMember) {
-        setLinkError('該帳號已在成員清單中，無法重複連結！');
+
+      if (existingMember) {
+        // ── 合併模式：對象已是活動成員，將臨時成員的帳目全部轉移過去後刪除臨時成員 ──
+        const mergeId = existingMember.id;
+
+        const updatedExpenses = event.expenses.map((exp) => ({
+          ...exp,
+          paidById: exp.paidById === oldId ? mergeId : exp.paidById,
+          splits: exp.splits.map((s) => ({
+            ...s,
+            memberId: s.memberId === oldId ? mergeId : s.memberId
+          }))
+        }));
+
+        const updatedSettlements = event.settlements?.map((sr) => ({
+          ...sr,
+          fromId: sr.fromId === oldId ? mergeId : sr.fromId,
+          toId: sr.toId === oldId ? mergeId : sr.toId
+        }));
+
+        // 刪除臨時成員（帳目已全部轉移）
+        const updatedMembers = event.members.filter((m) => m.id !== oldId);
+
+        onUpdateEvent({
+          ...event,
+          members: updatedMembers,
+          expenses: updatedExpenses,
+          ...(updatedSettlements ? { settlements: updatedSettlements } : {})
+        });
+
+        setLinkModalTarget(null);
+        setLinkEmail('');
+        setToastMsg(`已將「${linkModalTarget.name}」的帳目合併至 ${existingMember.name}，並移除臨時成員！`);
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 4000);
         return;
       }
+
+      // ── 連結模式：對象尚未加入，轉換為已註冊成員並發送邀請 ──
 
       // 1. 更新成員資料：使用真實姓名，替換 ID，標記為待接受邀請
       const updatedMembers = event.members.map((m) =>
@@ -269,7 +304,7 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
           ? {
               ...m,
               id: newId,
-              name: profile.name || m.name, // 使用已註冊帳號的真實姓名
+              name: profile.name || m.name,
               email: profile.email,
               avatarUrl: profile.avatar_url || m.avatarUrl,
               paymentMethods: profile.payment_methods || [],
@@ -1634,7 +1669,7 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
                 <span style={{ color: 'var(--text-primary)', fontWeight: '600', margin: '0 4px' }}>
                   「{linkModalTarget.name}」
                 </span>
-                的所有帳目記錄轉移至已註冊使用者，並使用其真實姓名與大頭貼。
+                的所有帳目轉移給已註冊使用者。
               </div>
             </div>
 
@@ -1682,11 +1717,10 @@ export const EventDashboard: React.FC<EventDashboardProps> = ({
               marginBottom: '20px',
               lineHeight: '1.6'
             }}>
-              ℹ️ 連結後將：
+              ℹ️ 系統會自動判斷：
               <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
-                <li>臨時成員名稱更新為真實姓名與大頭貼</li>
-                <li>所有歷史帳目（付款人、分攤明細）自動更新歸屬</li>
-                <li>向對方發送加入邀請，待接受後可共同管理</li>
+                <li><strong style={{ color: 'var(--text-primary)' }}>尚未加入</strong>：連結帳號，更新真實姓名與大頭貼，發送加入邀請</li>
+                <li><strong style={{ color: 'var(--text-primary)' }}>已在成員清單</strong>：直接合併，帳目歸屬轉移後刪除臨時成員</li>
               </ul>
             </div>
 
